@@ -21,7 +21,9 @@ module alu #(parameter XLEN=32) (
 	assign sum = a + (subtract_or_arithmetic_shift ? -b : b);
 
 	// TODO: synthesize and make sure this doesn't make two distinct shift units
-	assign right_shift = subtract_or_arithmetic_shift ? (a <<< b[4:0]) : (a << b[4:0]);
+	assign right_shift = subtract_or_arithmetic_shift
+			? $signed($signed(a) >>> b[4:0])	// arithmetic shift
+			: (a >> b[4:0]);			// logical shift
 
 	assign _xor = a ^ b;
 	assign _or = a | b;

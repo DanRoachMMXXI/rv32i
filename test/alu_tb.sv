@@ -11,7 +11,7 @@ module alu_tb();
 		.a(a),
 		.b(b),
 		.op(op),
-		.subtract_or_arithmetic_shift(sub),
+		.sign(sub),
 		.result(result));
 
 	initial begin

@@ -5,7 +5,7 @@ module alu #(parameter XLEN=32) (
 
 	// control signals
 	input logic [2:0] op,	// funct3 - used to select output
-	input logic subtract_or_arithmetic_shift,	// TODO: rename
+	input logic sign,	// control signal indicating subtraction or arithmetic shift
 							// inst[30] when opcode indicates R type instruction
 							// seems to be always 0 in I type instructions
 
@@ -18,10 +18,10 @@ module alu #(parameter XLEN=32) (
 	logic [XLEN-1:0] _or;	// TODO: rename
 	logic [XLEN-1:0] _and;	// TODO: rename
 
-	assign sum = a + (subtract_or_arithmetic_shift ? -b : b);
+	assign sum = a + (sign ? -b : b);
 
 	// TODO: synthesize and make sure this doesn't make two distinct shift units
-	assign right_shift = subtract_or_arithmetic_shift
+	assign right_shift = sign
 			? $signed($signed(a) >>> b[4:0])	// arithmetic shift
 			: (a >> b[4:0]);			// logical shift
 

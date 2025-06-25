@@ -9,8 +9,10 @@ module alu #(parameter XLEN=32) (
 							// inst[30] when opcode indicates R type instruction
 							// seems to be always 0 in I type instructions
 
-	// output result
-	output logic [XLEN-1:0] result);
+	
+	output logic [XLEN-1:0] result,	// output result
+	output logic zero		// true if result is zero, useful for branch
+	);
 
 	logic [XLEN-1:0] sum;	// result for both addition and subtraction
 	logic [XLEN-1:0] right_shift;
@@ -41,5 +43,6 @@ module alu #(parameter XLEN=32) (
 			3'b111: result = _and;			// and
 			// opting to not have a default case until I change my mind
 		endcase
+	assign zero = (result == 0);
 
 endmodule

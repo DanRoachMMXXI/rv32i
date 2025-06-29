@@ -1,7 +1,7 @@
 verilator_cmd = verilator --binary -j 0
 
 all:
-	$(verilator_cmd) src/*.sv test/*.sv
+	$(verilator_cmd) src/*.sv
 
 alu:
 	$(verilator_cmd) src/alu.sv test/alu_tb.sv

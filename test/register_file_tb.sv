@@ -1,6 +1,6 @@
 module register_file_tb ();
 	logic clk;
-	logic clr;
+	logic reset;
 
 	logic [4:0] rs1_index;
 	logic [4:0] rs2_index;
@@ -14,7 +14,7 @@ module register_file_tb ();
 
 	register_file rf(
 		.clk(clk),
-		.clr(clr),
+		.reset(reset),
 		.rs1_index(rs1_index),
 		.rs2_index(rs2_index),
 		.rd_index(rd_index),
@@ -29,8 +29,9 @@ module register_file_tb ();
 		rs1_index = 'b0;
 		rs2_index = 'b0;
 
-		#10 clr = 1;
-		#20 clr = 0;
+		// reset the register file
+		#10 reset = 0;
+		#40 reset = 1;
 		
 		rd = 'b1;
 		rd_index = 00001;

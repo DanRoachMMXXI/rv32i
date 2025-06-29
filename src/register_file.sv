@@ -12,6 +12,7 @@ module register_file
 	output logic [XLEN-1:0] rs2);
 
 	reg [XLEN-1:0] registers [0:((2**ADDR_WIDTH)-1)];
+	integer i;
 	
 	always @(posedge clk)
 		if (!reset) begin

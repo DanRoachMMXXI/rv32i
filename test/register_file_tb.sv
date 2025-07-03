@@ -34,18 +34,20 @@ module register_file_tb ();
 		#40 reset = 1;
 		
 		rd = 'b1;
-		rd_index = 00001;
+		rd_index = 1;
 		write_en = 1;
 
-		#20 rd = 'b10101010101010101010101010101010;
-		rd_index = 00010;
+		#20 rd = 'hAAAAAAAA;
+		rd_index = 2;
 
 		#20 write_en = 0;
 
-		rs1_index = 00001;
-		rs2_index = 00010;
+		rs1_index = 1;
+		rs2_index = 2;
 
-		#20 $display("rs1: 0x%0h", rs1);
-		#20 $display("rs2: 0x%0h", rs2);
+		#20 $display("rs1: expected %0d, actual %0d", 1, rs1);
+		#20 $display("rs2: expected %0d, actual %0d", 'hAAAAAAAA, rs2);
+
+		$finish(0);
 	end
 endmodule

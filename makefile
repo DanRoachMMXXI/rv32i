@@ -15,8 +15,8 @@ instruction_decode:
 memory:
 	$(verilator_cmd) src/memory.sv
 
-branch_module:
-	$(verilator_cmd) src/branch_module.sv
+branch:
+	$(verilator_cmd) src/branch_*.sv test/branch_tb.sv
 
 clean:
 	rm -r obj_dir

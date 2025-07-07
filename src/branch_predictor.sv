@@ -1,5 +1,5 @@
 module branch_predictor #(parameter XLEN=32) (
-	input logic [XLEN-1:0] pc_next,
+	input logic [XLEN-1:0] pc_plus_four,
 	input logic [XLEN-1:0] immediate,
 
 	// TODO: figure out how the complex branch prediction algorithms work.
@@ -17,7 +17,7 @@ module branch_predictor #(parameter XLEN=32) (
 	output logic branch_taken
 	);
 
-	assign branch_target = pc_next + immediate;
+	assign branch_target = pc_plus_four + immediate;
 
 	always_comb begin
 		if (jump)

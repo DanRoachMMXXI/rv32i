@@ -16,6 +16,11 @@ module instruction_decode #(parameter XLEN=32) (
 	output logic op2_src,	// mux input to select data source for
 				// the second operand of the alu
 				// 0 for register value, 1 for immediate
+	output logic [1:0] rd_select,	// mux select to select the data source
+					// to write back to the register file
+					// 0: alu
+					// 1: memory
+					// 2: pc + 4 for jump instructions
 
 	// alu control signals
 	output logic [2:0] alu_op,
@@ -185,6 +190,28 @@ module instruction_decode #(parameter XLEN=32) (
 
 			default:	// ALU unused or illegal instruction
 				op2_src = 0;
+		endcase
+
+	// RF writeback source
+	always_comb
+		case (opcode)
+			R_TYPE,
+			I_TYPE_ALU,
+			LUI,
+			AUIPC:
+				rd_select = 0;
+
+			I_TYPE_LOAD:
+				rd_select = 1;
+
+			JAL,
+			I_TYPE_JALR:
+				rd_select = 2;
+
+			// RF is not written by this instruction, or the
+			// instruction is illegal
+			default:
+				rd_select = 0;
 		endcase
 
 	// Register file and memory write enable signals

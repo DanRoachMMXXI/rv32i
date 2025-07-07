@@ -1,7 +1,7 @@
 verilator_cmd = verilator --binary -j 0
 
-all:
-	$(verilator_cmd) src/*.sv
+single_cycle:
+	$(verilator_cmd) src/*.sv --top-module single_cycle
 
 alu:
 	$(verilator_cmd) src/alu.sv test/alu_tb.sv

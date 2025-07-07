@@ -24,6 +24,7 @@ module register_file
 				registers[rd_index] <= rd;
 			// TODO add else reg[rd_ind] <= rd if no work
 			// but that seems pointless
+			registers[0] <= 0;	// register 0 is always 0
 		end
 	
 	assign rs1 = registers[rs1_index];

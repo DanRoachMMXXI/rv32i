@@ -1,7 +1,7 @@
 // Combining the tests for the branch_predictor and branch_evaluator because
 // they're going to be running on mostly the same stimuli
 module branch_tb();
-	logic [31:0] pc_next;
+	logic [31:0] pc_plus_four;
 	logic [31:0] immediate;
 	logic jump;
 	logic branch;
@@ -12,7 +12,7 @@ module branch_tb();
 	logic branch_taken_evaluator;
 
 	branch_predictor predictor(
-		.pc_next(pc_next),
+		.pc_plus_four(pc_plus_four),
 		.immediate(immediate),
 		.jump(jump),
 		.branch(branch),
@@ -27,8 +27,8 @@ module branch_tb();
 		.branch_taken(branch_taken_evaluator));
 
 	initial begin
-		// Initial values for pc_next and immediate
-		pc_next = 12;
+		// Initial values for pc_plus_four and immediate
+		pc_plus_four = 12;
 		immediate = 20;
 		
 		branch = 0;

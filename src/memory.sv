@@ -1,4 +1,7 @@
-module memory #(parameter XLEN=32, parameter ADDR_WIDTH=32) (
+module memory #(
+	parameter XLEN=32,
+	parameter ADDR_WIDTH=32,
+	parameter MEM_FILE = "") (
 	input logic clk,
 	input logic reset,	// active low reset
 	input logic [ADDR_WIDTH-1:0] address,
@@ -9,6 +12,16 @@ module memory #(parameter XLEN=32, parameter ADDR_WIDTH=32) (
 
 	reg [XLEN-1:0] memory [0:((2**ADDR_WIDTH)-1)];
 	integer i;
+
+	initial begin
+		if (MEM_FILE != "") begin
+			$readmemh(MEM_FILE, memory);
+		end else begin
+			for (i = 0; i < ((2**ADDR_WIDTH)-1); i = i + 1) begin
+				memory[i] = 0;
+			end
+		end
+	end
 
 	// This was taken from ChipVerify without the select signal
 	// https://www.chipverify.com/verilog/verilog-arrays-memories

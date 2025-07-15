@@ -20,15 +20,13 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 
 	output logic busy_out,
 
-	output logic ready_out,
+	output logic ready,
 
 	output logic [TAG_WIDTH-1:0] reorder_buffer_tag_out,
 	output logic [2:0] alu_op_out,
 	output logic [XLEN-1:0] op1_data_out,
 	output logic [XLEN-1:0] op2_data_out
 	);
-
-	logic ready;
 
 	// signals that determine whether we need to store the value on the
 	// cdb in op1 and/or op2
@@ -51,10 +49,12 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	assign read_cdb_data_op2 = ((enable ? op2_tag_in : op2_tag) == cdb_tag) && cdb_enable;
 
 	always @(posedge clk) begin
-		// clear/flush the contents of the buffer if active low reset
-		// signal or if the previously stored instruction has been
-		// issued via the ready signal
-		if (!reset || ready) begin
+		// clear the contents of the buffer if active low reset
+		// previously I had also flushed if ready was set, but
+		// realized that there is not guaranteed to be an available FU
+		// to issue the instruction, so some external logic has to
+		// issue and clear the station explicitly
+		if (!reset) begin
 			reorder_buffer_tag = 0;
 			alu_op = 0;
 			op1_tag = 0;
@@ -101,5 +101,5 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	assign alu_op_out = alu_op;
 	assign op1_data_out = op1_data;
 	assign op2_data_out = op2_data;
-	assign ready_out = ready;
+	assign busy_out = busy;
 endmodule

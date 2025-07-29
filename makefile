@@ -33,5 +33,8 @@ memory:
 branch:
 	$(VLOG) src/branch_*.sv test/branch_tb.sv
 
+reorder_buffer:
+	$(VLOG) src/reorder_buffer.sv
+
 clean:
 	rm -rf work transcript *.log *.wlf

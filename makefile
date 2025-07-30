@@ -5,10 +5,13 @@
 
 UVM_HOME = ../uvm-1.2/src
 VLOG = vlog
+VSIM = vsim
 
 UVM_INCDIR = +incdir+$(UVM_HOME)
 
-component_uvm_pkg = $(UVM_INCDIR) +incidr+test/$(1) test/$(1)/$(1)_pkg.sv
+component_uvm_pkg = $(UVM_INCDIR) +incdir+test/$(1) test/$(1)/$(1)_pkg.sv
+component_uvm_tb = $(UVM_INCDIR) +incdir+test/$(1) test/$(1)/$(1)_tb_top.sv
+run_uvm_sim = -c -do "run -all; quit" $(1)_tb_top
 
 uvm:
 	$(VLOG) $(UVM_INCDIR) $(UVM_HOME)/uvm_pkg.sv
@@ -20,6 +23,8 @@ alu:
 	$(compile_uvm_pkg)
 	$(VLOG) src/alu.sv test/alu/alu_if.sv
 	$(VLOG) $(call component_uvm_pkg,alu)
+	$(VLOG) $(call component_uvm_tb,alu)
+	$(VSIM) $(call run_uvm_sim,alu)
 
 register_file:
 	$(VLOG) src/register_file.sv test/register_file_tb.sv

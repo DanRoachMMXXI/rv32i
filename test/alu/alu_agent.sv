@@ -1,3 +1,8 @@
+`include "uvm_macros.svh"
+import uvm_pkg::*;
+
+`include "alu_driver.sv"
+`include "alu_monitor.sv"
 import alu_pkg::*;
 
 class alu_agent extends uvm_agent;

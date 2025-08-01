@@ -1,6 +1,11 @@
+`include "uvm_macros.svh"
+import uvm_pkg::*;
+
 class alu_sequence extends uvm_sequence #(alu_transaction);
 	`uvm_object_utils(alu_sequence)
-	function new (string name);
+
+	// needs a default name
+	function new (string name = "alu_sequence");
 		super.new(name);
 	endfunction
 

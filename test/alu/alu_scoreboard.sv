@@ -1,3 +1,8 @@
+`include "uvm_macros.svh"
+import uvm_pkg::*;
+
+import alu_pkg::*;
+
 class alu_scoreboard extends uvm_component;	// see if it should be component or scoreboard
 	`uvm_component_utils(alu_scoreboard)
 
@@ -14,6 +19,39 @@ class alu_scoreboard extends uvm_component;	// see if it should be component or 
 	endfunction
 
 	function void write(alu_transaction tx);
-		// TODO: validation logic
+		logic [31:0] expected_result;
+		string msg;
+		case ({tx.sign, tx.op})
+			4'b0000:	// add
+				expected_result = tx.a + tx.b;
+			4'b0001:	// left shift
+				expected_result = tx.a << tx.b[4:0];
+			4'b0010:	// less than signed
+				expected_result = ($signed(tx.a) < $signed(tx.b)) ? 1 : 0;
+			4'b0011:	// less than unsigned
+				expected_result = (tx.a < tx.b) ? 1 : 0;
+			4'b0100:	// xor
+				expected_result = tx.a ^ tx.b;
+			4'b0101:	// logical right shift
+				expected_result = tx.a >> tx.b[4:0];
+			4'b0110:	// or
+				expected_result = tx.a | tx.b;
+			4'b0111:	// and
+				expected_result = tx.a & tx.b;
+			4'b1000:	// sub
+				expected_result = tx.a - tx.b;
+			4'b1101:	// arithmetic right shift
+				expected_result = $signed($signed(tx.a) >>> tx.b[4:0]);
+			default:	// throw error here, invalid arg
+			begin
+				msg = $sformatf("ALU received invalid combination of sign %0d and op %0d", tx.sign, tx.op);
+				`uvm_error("SCOREBOARD", msg)
+			end
+		endcase
+
+		if (tx.result !== expected_result) begin
+			msg = $sformatf("ALU output 0x%0h mismatched expected output 0x%0h for sign 0x%0h and op 0x%0h", tx.result, expected_result, tx.sign, tx.op);
+			`uvm_error("SCOREBOARD", msg)
+		end
 	endfunction
 endclass

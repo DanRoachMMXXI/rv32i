@@ -1,6 +1,8 @@
 `include "uvm_macros.svh"
 import uvm_pkg::*;
 
+import alu_pkg::*;
+
 class alu_monitor extends uvm_monitor;
 	`uvm_component_utils(alu_monitor)
 	uvm_analysis_port #(alu_transaction) analysis_port;

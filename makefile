@@ -18,11 +18,28 @@ component_uvm_pkg = $(UVM_INCDIR) $(call uvm_component_incdir,alu) $(call uvm_co
 component_uvm_tb = $(UVM_INCDIR) $(call uvm_component_incdir,alu) test/$(1)/$(1)_tb_top.sv
 run_uvm_sim = -c -do "run -all; quit" $(1)_tb_top
 
+GCC = riscv32-unknown-elf-gcc -nostdlib -T test/programs/linker.ld test/programs/init.s
+OBJCOPY = riscv32-unknown-elf-objcopy -O verilog
+OBJDUMP = riscv32-unknown-elf-objdump -d
+
 uvm:
 	$(VLOG) $(UVM_INCDIR) $(UVM_HOME)/uvm_pkg.sv
 
 single_cycle:
-	$(VLOG) src/*.sv --top-module single_cycle
+	verilator --binary -j 0 test/single_cycle.sv \
+		src/alu* \
+		src/branch_evaluator.sv \
+		src/data_memory.sv \
+		src/instruction* \
+		src/pc_select.sv \
+		src/register* \
+		src/rf_wb_select.sv \
+		src/single_cycle.sv
+
+simple-sum:
+	$(GCC) test/programs/simple-sum/simple-sum.c -o test/programs/simple-sum/simple-sum.elf
+	$(OBJCOPY) test/programs/simple-sum/simple-sum.elf test/programs/simple-sum/simple-sum.vh
+	$(OBJDUMP) test/programs/simple-sum/simple-sum.elf
 
 alu:
 	# uvm package

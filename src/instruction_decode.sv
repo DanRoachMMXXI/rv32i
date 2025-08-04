@@ -98,11 +98,17 @@ module instruction_decode #(parameter XLEN=32) (
 				end
 
 				default:	// illegal instruction
+						// TODO: fault
 				begin
 					alu_op = 'b000;
 					sign = 0;
 				end
 			endcase
+		else if (opcode == LUI || opcode == AUIPC)	// LUI and AUIPC both utilize the ALU for addition
+		begin
+			alu_op = 'b000;
+			sign = 0;
+		end
 		else	// R type and I type, and other instruction types will not read this
 		begin
 			alu_op = funct3;

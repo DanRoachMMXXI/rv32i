@@ -21,6 +21,22 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 	output logic [XLEN-1:0] rs2,
 	output logic [XLEN-1:0] rd,
 
+	output logic [XLEN-1:0] immediate,
+
+	output logic [1:0] alu_op1_src,
+	output logic alu_op2_src,
+	output logic [1:0] rd_select,
+
+	output logic rf_write_en,
+	output logic mem_write_en,
+
+	output logic [XLEN-1:0] alu_op1,
+	output logic [XLEN-1:0] alu_op2,
+	output logic [2:0] alu_operation,
+	output logic alu_sign,
+	output logic [XLEN-1:0] alu_result,
+	output logic alu_zero,
+
 	output logic [XLEN-1:0] pc,
 	output logic [XLEN-1:0] pc_plus_four,
 	output logic [XLEN-1:0] branch_target,
@@ -37,11 +53,11 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 	// logic [XLEN-1:0] rs2;
 	// logic [XLEN-1:0] rd;
 
-	logic [XLEN-1:0] immediate;
+	// logic [XLEN-1:0] immediate;
 
-	logic [1:0] alu_op1_src;
-	logic alu_op2_src;
-	logic [1:0] rd_select;
+	// logic [1:0] alu_op1_src;
+	// logic alu_op2_src;
+	// logic [1:0] rd_select;
 
 	logic branch;
 	logic branch_if_zero;
@@ -49,15 +65,15 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 	logic branch_taken;
 	logic branch_mispredicted;
 
-	logic rf_write_en;
-	logic mem_write_en;
+	// logic rf_write_en;
+	// logic mem_write_en;
 
-	logic [XLEN-1:0] alu_op1;
-	logic [XLEN-1:0] alu_op2;
-	logic [2:0] alu_operation;
-	logic alu_sign;
-	logic [XLEN-1:0] alu_result;
-	logic alu_zero;
+	// logic [XLEN-1:0] alu_op1;
+	// logic [XLEN-1:0] alu_op2;
+	// logic [2:0] alu_operation;
+	// logic alu_sign;
+	// logic [XLEN-1:0] alu_result;
+	// logic alu_zero;
 
 	logic [XLEN-1:0] memory_data_out;
 
@@ -108,8 +124,8 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 		.rd_index(rd_index),
 		.rd(rd),
 		.write_en(rf_write_en),
-		.rs1(),
-		.rs2());
+		.rs1(rs1),
+		.rs2(rs2));
 
 	assign pc_plus_four = pc + 4;
 	assign branch_target = pc_plus_four + immediate;

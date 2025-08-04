@@ -1,16 +1,44 @@
-module single_cycle #(parameter XLEN=32) (
+/*
+ * TODO
+ * memory size defaulting to 4096 is becoming problematic.
+ *
+ * compiled program starts off with lowering the stack pointer, which is
+ * initialized with 0.  thus it points to -32, which is a very large unsigned
+ * number and is out of the range of memory.
+ *
+ * It's time to create distinct modules for instruction memory and data
+ * memory.  I already know it's needed, so better done now than later.
+ */
+module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 	input logic clk,
-	input logic reset
+	input logic reset,
+
+	// set these signals as output for verification purposes
+	output logic [31:0] instruction,
+
+	output logic [4:0] rs1_index,
+	output logic [4:0] rs2_index,
+	output logic [4:0] rd_index,
+
+	output logic [XLEN-1:0] rs1,
+	output logic [XLEN-1:0] rs2,
+	output logic [XLEN-1:0] rd,
+
+	output logic [XLEN-1:0] pc,
+	output logic [XLEN-1:0] pc_plus_four,
+	output logic [XLEN-1:0] branch_target,
+	output logic [XLEN-1:0] evaluated_branch_result,
+	output logic [XLEN-1:0] pc_next
 );
-	logic [31:0] instruction;
+	// logic [31:0] instruction;
 
-	logic [4:0] rs1_index;
-	logic [4:0] rs2_index;
-	logic [4:0] rd_index;
+	// logic [4:0] rs1_index;
+	// logic [4:0] rs2_index;
+	// logic [4:0] rd_index;
 
-	logic [XLEN-1:0] rs1;
-	logic [XLEN-1:0] rs2;
-	logic [XLEN-1:0] rd;
+	// logic [XLEN-1:0] rs1;
+	// logic [XLEN-1:0] rs2;
+	// logic [XLEN-1:0] rd;
 
 	logic [XLEN-1:0] immediate;
 
@@ -36,21 +64,22 @@ module single_cycle #(parameter XLEN=32) (
 
 	logic [XLEN-1:0] memory_data_out;
 
-	logic [XLEN-1:0] pc;
-	logic [XLEN-1:0] pc_plus_four;
-	logic [XLEN-1:0] branch_target;
-	logic [XLEN-1:0] evaluated_branch_result;
-	logic [XLEN-1:0] pc_next;
+	// logic [XLEN-1:0] pc;
+	// logic [XLEN-1:0] pc_plus_four;
+	// logic [XLEN-1:0] branch_target;
+	// logic [XLEN-1:0] evaluated_branch_result;
+	// logic [XLEN-1:0] pc_next;
 
-	memory #(.XLEN(XLEN), .MEM_FILE("program.hex")) instruction_memory (
+	memory #(.MEM_FILE(PROGRAM)) instruction_memory (
 		.clk(clk),
 		.reset(reset),
-		.address(pc_next),
-		.write_en(1'b0),
+		.address(pc),
 		.data_in({XLEN{1'b0}}),
+		.read_byte_en(4'b1111),	// always loading 32-bit instruction
+		.write_byte_en(4'b0000),	// not writing to imem
 		.data_out(instruction));
 
-	instruction_decode instruction_decode(
+	instruction_decode #(.XLEN(XLEN)) instruction_decode(
 		.instruction(instruction),
 		.rs1(rs1_index),
 		.rs2(rs2_index),
@@ -67,14 +96,14 @@ module single_cycle #(parameter XLEN=32) (
 		.rf_write_en(rf_write_en),
 		.mem_write_en(mem_write_en));
 
-	rf_wb_select rf_wb_select(
+	rf_wb_select #(.XLEN(XLEN)) rf_wb_select(
 		.alu_result(alu_result),
 		.memory_data_out(memory_data_out),
 		.pc_plus_four(pc_plus_four),
 		.select(rd_select),
 		.rd(rd));
 
-	register_file rf(
+	register_file #(.XLEN(XLEN)) rf(
 		.clk(clk),
 		.reset(reset),
 		.rs1_index(rs1_index),
@@ -88,7 +117,7 @@ module single_cycle #(parameter XLEN=32) (
 	assign pc_plus_four = pc + 4;
 	assign branch_target = pc_plus_four + immediate;
 
-	alu_operand_select alu_operand_select(
+	alu_operand_select #(.XLEN(XLEN)) alu_operand_select(
 		.rs1(rs1),
 		.rs2(rs2),
 		.immediate(immediate),
@@ -98,7 +127,7 @@ module single_cycle #(parameter XLEN=32) (
 		.alu_op1(alu_op1),
 		.alu_op2(alu_op2));
 
-	alu alu(
+	alu #(.XLEN(XLEN)) alu(
 		.a(alu_op1),
 		.b(alu_op2),
 		.op(alu_operation),
@@ -110,11 +139,14 @@ module single_cycle #(parameter XLEN=32) (
 		.clk(clk),
 		.reset(reset),
 		.address(alu_result),
-		.write_en(mem_write_en),
 		.data_in(rs2),
+
+		// no byte-addressing for now
+		.read_byte_en(4'b1111),
+		.write_byte_en({4{mem_write_en}}),
 		.data_out(memory_data_out));
 
-	branch_evaluator branch_evaluator(
+	branch_evaluator #(.XLEN(XLEN)) branch_evaluator(
 		.pc_plus_four(pc_plus_four),
 		.branch_target(branch_target),
 		.branch(branch),
@@ -124,7 +156,7 @@ module single_cycle #(parameter XLEN=32) (
 		.next_instruction(evaluated_branch_result),
 		.branch_mispredicted(branch_mispredicted));
 
-	pc_select pc_select(
+	pc_select #(.XLEN(XLEN)) pc_select(
 		.pc_plus_four(pc_plus_four),
 		.evaluated_branch_result(evaluated_branch_result),
 		.predicted_branch_target(32'b0),

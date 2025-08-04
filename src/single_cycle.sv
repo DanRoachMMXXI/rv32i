@@ -5,9 +5,6 @@
  * compiled program starts off with lowering the stack pointer, which is
  * initialized with 0.  thus it points to -32, which is a very large unsigned
  * number and is out of the range of memory.
- *
- * It's time to create distinct modules for instruction memory and data
- * memory.  I already know it's needed, so better done now than later.
  */
 module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 	input logic clk,
@@ -70,7 +67,7 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 	// logic [XLEN-1:0] evaluated_branch_result;
 	// logic [XLEN-1:0] pc_next;
 
-	memory #(.MEM_FILE(PROGRAM)) instruction_memory (
+	instruction_memory #(.MEM_FILE(PROGRAM)) instruction_memory (
 		.clk(clk),
 		.reset(reset),
 		.address(pc),
@@ -135,7 +132,7 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 		.result(alu_result),
 		.zero(alu_zero));
 
-	memory data_memory(
+	data_memory data_memory(
 		.clk(clk),
 		.reset(reset),
 		.address(alu_result),

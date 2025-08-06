@@ -7,8 +7,9 @@ module rf_wb_select #(parameter XLEN=32) (
 );
 	always_comb
 		case (select)
-			0:	rd = alu_result;
-			1:	rd = memory_data_out;
-			2:	rd = pc_plus_four;
+			0:		rd = alu_result;
+			1:		rd = memory_data_out;
+			2:		rd = pc_plus_four;
+			default:	rd = 0;	// invalid
 		endcase
 endmodule

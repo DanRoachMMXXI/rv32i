@@ -14,14 +14,16 @@ module alu_operand_select #(parameter XLEN=32) (
 	
 	always_comb
 		case (alu_op1_src)
-			0:	alu_op1 = rs1;
-			1:	alu_op1 = pc;	// AUIPC
-			2:	alu_op1 = 0;	// LUI
+			0:		alu_op1 = rs1;
+			1:		alu_op1 = pc;	// AUIPC
+			2:		alu_op1 = 0;	// LUI
+			default:	alu_op1 = 0;	// invalid
 		endcase
 
 	always_comb
 		case (alu_op2_src)
-			0:	alu_op2 = rs2;
-			1:	alu_op2 = immediate;
+			0:		alu_op2 = rs2;
+			1:		alu_op2 = immediate;
+			default:	alu_op2 = 0;	// invalid
 		endcase
 endmodule

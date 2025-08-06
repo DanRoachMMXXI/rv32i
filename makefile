@@ -28,7 +28,7 @@ uvm:
 single_cycle:
 	verilator --binary -j 0 test/single_cycle.sv \
 		src/alu* \
-		src/branch_evaluator.sv \
+		src/branch_* \
 		src/data_memory.sv \
 		src/instruction* \
 		src/pc_select.sv \

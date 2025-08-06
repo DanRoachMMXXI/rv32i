@@ -36,6 +36,10 @@ module instruction_decode #(parameter XLEN=32) (
 	output logic branch,		// bool to jump conditionally
 	output logic branch_if_zero,	// bool indicating the condition to jump
 	output logic jump,		// bool to jump unconditionally
+	output logic branch_base,	// if branch_target = base + immediate, this signal
+					// tracks what the base is
+					// 0: pc_plus_four
+					// 1: rs1 for JALR
 
 	// signals to write back to register file or memory
 	output logic rf_write_en,
@@ -74,6 +78,7 @@ module instruction_decode #(parameter XLEN=32) (
 			default:
 				branch_if_zero = 0;
 		endcase
+	assign branch_base = (opcode == I_TYPE_JALR) ? 1 : 0;
 
 	// ALU operation and sign
 	always_comb
@@ -104,7 +109,15 @@ module instruction_decode #(parameter XLEN=32) (
 					sign = 0;
 				end
 			endcase
-		else if (opcode == LUI || opcode == AUIPC)	// LUI and AUIPC both utilize the ALU for addition
+		// LUI and AUIPC utilize the ALU for addition
+		// STOREs and LOADs utilize the ALU for addition to compute
+		// the memory address
+		// STOREs and LOADs utilize funct3 to specify size: lb vs lh
+		// vs lw.  TODO implement ^
+		else if (opcode == LUI
+				|| opcode == AUIPC
+				|| opcode == I_TYPE_LOAD
+				|| opcode == S_TYPE)
 		begin
 			alu_op = 'b000;
 			sign = 0;

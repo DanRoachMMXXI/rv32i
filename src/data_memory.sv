@@ -38,9 +38,9 @@ module data_memory #(
 		end else begin
 			// write bytes that are enabled
 			memory[address + 3] <= (write_byte_en[3]) ? data_in[31:24] : memory[address + 3];
-			memory[address + 2] <= (write_byte_en[2]) ? data_in[31:24] : memory[address + 2];
-			memory[address + 1] <= (write_byte_en[1]) ? data_in[31:24] : memory[address + 1];
-			memory[address + 0] <= (write_byte_en[0]) ? data_in[31:24] : memory[address + 0];
+			memory[address + 2] <= (write_byte_en[2]) ? data_in[23:16] : memory[address + 2];
+			memory[address + 1] <= (write_byte_en[1]) ? data_in[15:8] : memory[address + 1];
+			memory[address + 0] <= (write_byte_en[0]) ? data_in[7:0] : memory[address + 0];
 		end
 	end
 

@@ -15,10 +15,10 @@ module alu #(parameter XLEN=32) (
 	);
 
 	logic [XLEN-1:0] sum;	// result for both addition and subtraction
-	logic [XLEN-1:0] right_shift;
-	logic [XLEN-1:0] _xor;	// TODO: rename
-	logic [XLEN-1:0] _or;	// TODO: rename
-	logic [XLEN-1:0] _and;	// TODO: rename
+	logic [XLEN-1:0] right_shift;	// result for signed and unsigned
+	logic [XLEN-1:0] _xor;
+	logic [XLEN-1:0] _or;
+	logic [XLEN-1:0] _and;
 
 	assign sum = a + (sign ? -b : b);
 

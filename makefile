@@ -41,6 +41,16 @@ simple-sum:
 	$(OBJCOPY) test/programs/simple-sum/simple-sum.elf test/programs/simple-sum/simple-sum.vh
 	$(OBJDUMP) test/programs/simple-sum/simple-sum.elf
 
+simple-loop:
+	$(GCC) test/programs/simple-loop/simple-loop.c -o test/programs/simple-loop/simple-loop.elf
+	$(OBJCOPY) test/programs/simple-loop/simple-loop.elf test/programs/simple-loop/simple-loop.vh
+	$(OBJDUMP) test/programs/simple-loop/simple-loop.elf
+
+matrix four-by-four-matrix:
+	$(GCC) test/programs/four-by-four-matrix/four-by-four-matrix.c -o test/programs/four-by-four-matrix/four-by-four-matrix.elf
+	$(OBJCOPY) test/programs/four-by-four-matrix/four-by-four-matrix.elf test/programs/four-by-four-matrix/four-by-four-matrix.vh
+	$(OBJDUMP) test/programs/four-by-four-matrix/four-by-four-matrix.elf
+
 alu:
 	# uvm package
 	$(VLOG) $(UVM_INCDIR) $(UVM_HOME)/uvm_pkg.sv

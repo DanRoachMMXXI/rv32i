@@ -1,3 +1,194 @@
+module immediate_decode #(parameter XLEN=32) (
+	input logic [31:0] instruction,
+	output logic [XLEN-1:0] immediate
+	);
+
+	// TODO: consolidate all definitions of this into one
+	localparam R_TYPE = 'b0110011;
+	localparam I_TYPE_ALU = 'b0010011;
+	localparam I_TYPE_LOAD = 'b0000011;
+	localparam I_TYPE_JALR = 'b1100111;
+	localparam B_TYPE = 'b1100011;
+	localparam S_TYPE = 'b0100011;
+	localparam JAL = 'b1101111;
+	localparam LUI = 'b0110111;
+	localparam AUIPC = 'b0010111;
+
+	logic [6:0] opcode = instruction[6:0];
+
+	// Immediate value computation and assignment
+	// Page 27
+	/* verilator lint_off WIDTHTRUNC */
+	always_comb
+		case (opcode)
+			I_TYPE_ALU, I_TYPE_LOAD, I_TYPE_JALR:
+				immediate = {
+					{XLEN{instruction[31]}}, instruction[31:20]
+				};
+			B_TYPE:
+				immediate = {
+					{XLEN{instruction[31]}},
+					instruction[31],
+					instruction[7],
+					instruction[30:25],
+					instruction[11:8],
+					1'b0
+				};
+			S_TYPE:
+				immediate = {
+					{XLEN{instruction[31]}},
+					instruction[31:25],
+					instruction[11:7]
+				};
+			JAL:		// J type
+				immediate = {
+					{XLEN{instruction[31]}},
+					instruction[20],
+					instruction[10:1],
+					instruction[11],
+					instruction[19:12],
+					1'b0
+				};
+			LUI, AUIPC:	// U type
+				immediate = {
+					instruction[31:12],
+					{12{1'b0}}
+				};
+			default:
+				immediate = 0;
+		endcase
+	/* verilator lint_on WIDTHTRUNC */
+endmodule
+
+module branch_decode (
+	input logic [6:0] opcode,
+	input logic [2:0] funct3,
+	output logic jump,
+	output logic branch,
+	output logic branch_if_zero,
+	output logic branch_base
+	);
+
+	localparam I_TYPE_JALR = 'b1100111;
+	localparam B_TYPE = 'b1100011;
+	localparam JAL = 'b1101111;
+
+	assign jump = (opcode == JAL || opcode == I_TYPE_JALR) ? 1 : 0;
+	assign branch = (opcode == B_TYPE) ? 1 : 0;
+	always_comb
+		case (funct3)
+			'b000,	// beq
+			'b011,	// bge
+			'b111:	// bgeu
+				branch_if_zero = 1;
+			default:
+				branch_if_zero = 0;
+		endcase
+	assign branch_base = (opcode == I_TYPE_JALR) ? 1 : 0;
+endmodule
+
+module alu_decode (
+	input logic [31:0] instruction,
+	output logic [2:0] alu_op,
+	output logic sign,
+	output logic [1:0] op1_src,
+	output logic op2_src
+	);
+
+	localparam R_TYPE = 'b0110011;
+	localparam I_TYPE_ALU = 'b0010011;
+	localparam I_TYPE_LOAD = 'b0000011;
+	localparam I_TYPE_JALR = 'b1100111;
+	localparam B_TYPE = 'b1100011;
+	localparam S_TYPE = 'b0100011;
+	localparam JAL = 'b1101111;
+	localparam LUI = 'b0110111;
+	localparam AUIPC = 'b0010111;
+
+	logic [6:0] opcode = instruction[6:0];
+	logic [2:0] funct3 = instruction[14:12];
+
+	// ALU operation and sign
+	always_comb
+		if (opcode == B_TYPE)
+			case (funct3)
+				'b000, 'b001:	// beq and bne
+				begin
+					alu_op = 'b000;
+					sign = 1;
+				end
+
+				'b100, 'b101:	// blt and bge
+				begin
+					alu_op = 'b010;
+					sign = 0;
+				end
+
+				'b110, 'b111:	// bltu and bgeu
+				begin
+					alu_op = 'b011;
+					sign = 0;
+				end
+
+				default:	// illegal instruction
+						// TODO: fault
+				begin
+					alu_op = 'b000;
+					sign = 0;
+				end
+			endcase
+		// LUI and AUIPC utilize the ALU for addition
+		// STOREs and LOADs utilize the ALU for addition to compute
+		// the memory address
+		// STOREs and LOADs utilize funct3 to specify size: lb vs lh
+		// vs lw.  TODO implement ^, probably in a memory_decode module
+		else if (opcode == LUI
+				|| opcode == AUIPC
+				|| opcode == I_TYPE_LOAD
+				|| opcode == S_TYPE)
+		begin
+			alu_op = 'b000;
+			sign = 0;
+		end
+		else	// R type and I type, and other instruction types will not read this
+		begin
+			alu_op = funct3;
+			sign = (opcode == R_TYPE) ? instruction[30] : 0;	// R type specific
+		end
+
+	// ALU OP1 source
+	// This is almost always the register value.
+	// In the case of auipc, we pass the PC into the adder to add with the immediate
+	// In the case of lui, we can just use the ALU's adder to add 0 with the immediate
+	always_comb
+		case (opcode)
+			LUI:
+				op1_src = 2;
+			AUIPC:
+				op1_src = 1;
+			default:
+				op1_src = 0;
+		endcase
+
+	// ALU OP2 source
+	always_comb
+		case (opcode)
+			R_TYPE,
+			B_TYPE:
+				op2_src = 0;
+
+			I_TYPE_ALU,
+			I_TYPE_LOAD,
+			I_TYPE_JALR,
+			S_TYPE,
+			LUI:
+				op2_src = 1;
+
+			default:	// ALU unused or illegal instruction
+				op2_src = 0;
+		endcase
+endmodule
+
 module instruction_decode #(parameter XLEN=32) (
 	input logic [31:0] instruction,
 
@@ -67,149 +258,25 @@ module instruction_decode #(parameter XLEN=32) (
 	assign rd = instruction[11:7];
 
 	// branch and jump signals
-	assign jump = (opcode == JAL || opcode == I_TYPE_JALR) ? 1 : 0;
-	assign branch = (opcode == B_TYPE) ? 1 : 0;
-	always_comb
-		case (funct3)
-			'b000,	// beq
-			'b011,	// bge
-			'b111:	// bgeu
-				branch_if_zero = 1;
-			default:
-				branch_if_zero = 0;
-		endcase
-	assign branch_base = (opcode == I_TYPE_JALR) ? 1 : 0;
+	branch_decode branch_decode(
+		.opcode(opcode),
+		.funct3(funct3),
+		.jump(jump),
+		.branch(branch),
+		.branch_if_zero(branch_if_zero),
+		.branch_base(branch_base));
 
-	// ALU operation and sign
-	always_comb
-		if (opcode == B_TYPE)
-			case (funct3)
-				'b000, 'b001:	// beq and bne
-				begin
-					alu_op = 'b000;
-					sign = 1;
-				end
 
-				'b100, 'b101:	// blt and bge
-				begin
-					alu_op = 'b010;
-					sign = 0;
-				end
+	immediate_decode #(.XLEN(32)) immediate_decode(
+		.instruction(instruction),
+		.immediate(immediate));
 
-				'b110, 'b111:	// bltu and bgeu
-				begin
-					alu_op = 'b011;
-					sign = 0;
-				end
-
-				default:	// illegal instruction
-						// TODO: fault
-				begin
-					alu_op = 'b000;
-					sign = 0;
-				end
-			endcase
-		// LUI and AUIPC utilize the ALU for addition
-		// STOREs and LOADs utilize the ALU for addition to compute
-		// the memory address
-		// STOREs and LOADs utilize funct3 to specify size: lb vs lh
-		// vs lw.  TODO implement ^
-		else if (opcode == LUI
-				|| opcode == AUIPC
-				|| opcode == I_TYPE_LOAD
-				|| opcode == S_TYPE)
-		begin
-			alu_op = 'b000;
-			sign = 0;
-		end
-		else	// R type and I type, and other instruction types will not read this
-		begin
-			alu_op = funct3;
-			sign = (opcode == R_TYPE) ? instruction[30] : 0;	// R type specific
-		end
-
-	// Immediate value computation and assignment
-	// Page 27
-	/* verilator lint_off WIDTHTRUNC */
-	logic [XLEN-1:0] i_type_immediate = {
-		{XLEN{instruction[31]}}, instruction[31:20]
-	};
-	logic [XLEN-1:0] b_type_immediate = {
-		{XLEN{instruction[31]}},
-		instruction[31],
-		instruction[7],
-		instruction[30:25],
-		instruction[11:8],
-		1'b0
-	};
-	logic [XLEN-1:0] s_type_immediate = {
-		{XLEN{instruction[31]}},
-		instruction[31:25],
-		instruction[11:7]
-	};
-	logic [XLEN-1:0] j_type_immediate = {
-		{XLEN{instruction[31]}},
-		instruction[20],
-		instruction[10:1],
-		instruction[11],
-		instruction[19:12],
-		1'b0
-	};
-	logic [XLEN-1:0] u_type_immediate = {
-		instruction[31:12],
-		{12{1'b0}}
-	};
-	/* verilator lint_on WIDTHTRUNC */
-
-	always_comb
-		case (opcode)
-			I_TYPE_ALU, I_TYPE_LOAD, I_TYPE_JALR:
-				immediate = i_type_immediate;
-			B_TYPE:
-				immediate = b_type_immediate;
-			S_TYPE:
-				immediate = s_type_immediate;
-			JAL:		// J type
-				immediate = j_type_immediate;
-			LUI, AUIPC:	// U type
-				immediate = u_type_immediate;
-			default:
-				immediate = 0;
-		endcase
-
-	// ALU OP1 source
-	// This is almost always the register value.
-	// In the case of auipc, we pass the PC into the adder to add with the
-	// immedaiate
-	// In the case of lui, we can just use the ALU's adder to add 0 with
-	// the immediate
-	always_comb
-		case (opcode)
-			LUI:
-				op1_src = 2;
-			AUIPC:
-				op1_src = 1;
-			default:
-				op1_src = 0;
-		endcase
-
-	// ALU OP2 source
-	always_comb
-		case (opcode)
-			R_TYPE,
-			B_TYPE:
-				op2_src = 0;
-
-			I_TYPE_ALU,
-			I_TYPE_LOAD,
-			I_TYPE_JALR,
-			S_TYPE,
-			LUI:
-				op2_src = 1;
-
-			default:	// ALU unused or illegal instruction
-				op2_src = 0;
-		endcase
+	alu_decode alu_decode(
+		.instruction(instruction),
+		.alu_op(alu_op),
+		.sign(sign),
+		.op1_src(op1_src),
+		.op2_src(op2_src));
 
 	// RF writeback source
 	always_comb

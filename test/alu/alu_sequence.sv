@@ -21,7 +21,7 @@ class alu_sequence extends uvm_sequence #(alu_transaction);
 			tx.a = $urandom();
 			tx.b = $urandom();
 			tx.op = $urandom_range(0,7);
-			if (!(tx.op inside { 1'b000, 1'b1011 }))
+			if (!(tx.op inside { 3'b000, 3'b101 }))
 				tx.sign = 0;
 			else
 				tx.sign = $urandom_range(0, 1);

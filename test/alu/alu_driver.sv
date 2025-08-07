@@ -36,7 +36,7 @@ class alu_driver extends uvm_driver #(alu_transaction);
 			// wait some amount of time so the inputs are applied.
 			// chatgpt example was for a sequential item, so it
 			// waited for @(posedge vif.clk)
-			# 10
+			# 1
 
 			seq_item_port.item_done();
 		end

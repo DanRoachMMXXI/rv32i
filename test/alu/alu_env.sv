@@ -35,7 +35,7 @@ class alu_env extends uvm_env;
 		// environment.  I'm just leaving an objection here to work
 		// from in future test setups.
 		phase.raise_objection(this);
-		# 10
+		# 100
 		phase.drop_objection(this);
 	endtask
 endclass

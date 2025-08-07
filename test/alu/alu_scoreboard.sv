@@ -53,5 +53,10 @@ class alu_scoreboard extends uvm_component;	// see if it should be component or 
 			msg = $sformatf("ALU output 0x%0h mismatched expected output 0x%0h for sign 0x%0h and op 0x%0h", tx.result, expected_result, tx.sign, tx.op);
 			`uvm_error("SCOREBOARD", msg)
 		end
+		else
+		begin
+			msg = $sformatf("ALU output 0x%0h matched expected output for sign 0x%0h and op 0x%0h", tx.result, tx.sign, tx.op);
+			`uvm_info("SCOREBOARD", msg, UVM_NONE)
+		end
 	endfunction
 endclass

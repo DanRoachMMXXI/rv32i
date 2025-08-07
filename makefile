@@ -3,11 +3,13 @@
 # taken from the command line on eda playground and modified to use my path to uvm
 # source files come after this
 
-UVM_HOME = ../uvm-1.2/src
+UVM_HOME = ../uvm-1.2
+UVM_SRC = $(UVM_HOME)/src
+
 VLOG = vlog
 VSIM = vsim
 
-UVM_INCDIR = +incdir+$(UVM_HOME)
+UVM_INCDIR = +incdir+$(UVM_SRC)
  
 
 uvm_component_dir = test/$(1)
@@ -16,14 +18,14 @@ uvm_component_incdir = +incdir+$(call uvm_component_dir,$(1))
 
 component_uvm_pkg = $(UVM_INCDIR) $(call uvm_component_incdir,alu) $(call uvm_component_dir,alu)/$(1)_pkg.sv
 component_uvm_tb = $(UVM_INCDIR) $(call uvm_component_incdir,alu) test/$(1)/$(1)_tb_top.sv
-run_uvm_sim = -c -do "run -all; quit" $(1)_tb_top
+run_uvm_sim = -sv_lib $(UVM_HOME)/lib/uvm_dpi64 -c -do "run -all; quit" $(1)_tb_top
 
 GCC = riscv32-unknown-elf-gcc -nostdlib -T test/programs/linker.ld test/programs/init.s
 OBJCOPY = riscv32-unknown-elf-objcopy -O verilog
 OBJDUMP = riscv32-unknown-elf-objdump -d
 
 uvm:
-	$(VLOG) $(UVM_INCDIR) $(UVM_HOME)/uvm_pkg.sv
+	$(VLOG) $(UVM_INCDIR) $(UVM_SRC)/uvm_pkg.sv
 
 single_cycle:
 	verilator --binary -j 0 test/single_cycle.sv \
@@ -53,7 +55,7 @@ matrix four-by-four-matrix:
 
 alu:
 	# uvm package
-	$(VLOG) $(UVM_INCDIR) $(UVM_HOME)/uvm_pkg.sv
+	$(VLOG) $(UVM_INCDIR) $(UVM_SRC)/uvm_pkg.sv
 
 	# DUT and interface
 	$(VLOG) $(UVM_INCDIR) +incdir+./test/alu src/alu.sv test/alu/alu_if.sv

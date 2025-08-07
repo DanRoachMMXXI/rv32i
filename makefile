@@ -76,7 +76,7 @@ alu:
 	# $(VLOG) $(call component_uvm_tb,alu)
 
 	# run simulation
-	# $(VSIM) $(call run_uvm_sim,alu)
+	$(VSIM) $(call run_uvm_sim,alu)
 
 register_file:
 	$(VLOG) src/register_file.sv test/register_file_tb.sv

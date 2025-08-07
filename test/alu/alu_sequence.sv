@@ -16,7 +16,17 @@ class alu_sequence extends uvm_sequence #(alu_transaction);
 			alu_transaction tx;
 			tx = alu_transaction#(.XLEN(32))::type_id::create("tx");
 			start_item(tx);		// handshake to communicate with driver
-			assert(tx.randomize());	// initialize tx data
+			
+			// no sim license workaround
+			tx.a = $urandom();
+			tx.b = $urandom();
+			tx.op = $urandom_range(0,7);
+			if (!(tx.op inside { 1'b000, 1'b1011 }))
+				tx.sign = 0;
+			else
+				tx.sign = $urandom_range(0, 1);
+
+			// assert(tx.randomize());	// initialize tx data
 			finish_item(tx);	// send transaction to driver
 			#1;
 		end

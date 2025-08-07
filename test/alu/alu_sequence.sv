@@ -18,6 +18,7 @@ class alu_sequence extends uvm_sequence #(alu_transaction);
 			start_item(tx);		// handshake to communicate with driver
 			assert(tx.randomize());	// initialize tx data
 			finish_item(tx);	// send transaction to driver
+			#1;
 		end
 	endtask
 endclass

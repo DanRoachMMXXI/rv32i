@@ -22,10 +22,11 @@ class alu_monitor extends uvm_monitor;
 	endfunction
 
 	task run_phase(uvm_phase phase);
-		#1
 		forever begin
 			alu_transaction tx = alu_transaction#(.XLEN(32))::type_id::create("tx");;
 			// no clock to sync with here
+
+			#1
 
 			// read the values from the virtual interface
 			tx.a = virt_alu_if.a;

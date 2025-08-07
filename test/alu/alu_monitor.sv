@@ -16,6 +16,9 @@ class alu_monitor extends uvm_monitor;
 		super.build_phase(phase);
 
 		analysis_port = new("analysis_port", this);
+
+		if (!uvm_config_db#(virtual alu_if)::get(this, "", "virt_alu_if", virt_alu_if))
+			`uvm_fatal("NOVIF", "No virtual interface set for monitor")
 	endfunction
 
 	task run_phase(uvm_phase phase);

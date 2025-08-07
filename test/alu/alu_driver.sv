@@ -3,7 +3,7 @@ import uvm_pkg::*;
 
 import alu_pkg::*;
 
-class alu_driver extends uvm_driver;
+class alu_driver extends uvm_driver #(alu_transaction);
 	`uvm_component_utils(alu_driver)
 	virtual alu_if virt_alu_if;
 

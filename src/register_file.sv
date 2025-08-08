@@ -1,22 +1,22 @@
 module register_file
-	#(parameter XLEN=32, ADDR_WIDTH=5) (
+	#(parameter XLEN=32) (
 	input logic clk,
 	input logic reset,
-	input logic [ADDR_WIDTH-1:0] rs1_index,
-	input logic [ADDR_WIDTH-1:0] rs2_index,
-	input logic [ADDR_WIDTH-1:0] rd_index,
+	input logic [4:0] rs1_index,
+	input logic [4:0] rs2_index,
+	input logic [4:0] rd_index,
 	input logic [XLEN-1:0] rd,
 	input logic write_en,
 
 	output logic [XLEN-1:0] rs1,
 	output logic [XLEN-1:0] rs2);
 
-	reg [XLEN-1:0] registers [0:((2**ADDR_WIDTH)-1)];
+	reg [XLEN-1:0] registers [0:31];
 	integer i;
 	
 	always @(posedge clk)
 		if (!reset) begin
-			for (i = 0; i < ((2**ADDR_WIDTH)-1); i = i + 1) begin
+			for (i = 0; i < 32; i = i + 1) begin
 				registers[i] <= 0;
 			end
 		end else begin

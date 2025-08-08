@@ -11,6 +11,7 @@ VSIM = vsim
 VSIM_ARGS = -sv_lib $(UVM_HOME)/lib/uvm_dpi64 -c -do "run -all; quit"
 
 UVM_INCDIR = +incdir+$(UVM_SRC)
+BASE_TEST_INCDIR = +incdir+./test
 
 GCC = riscv32-unknown-elf-gcc -nostdlib -T test/programs/linker.ld test/programs/init.s
 OBJCOPY = riscv32-unknown-elf-objcopy -O verilog
@@ -52,6 +53,9 @@ alu:
 
 	# DUT and interface
 	$(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) src/alu.sv test/alu/alu_if.sv
+
+	# base uvm components - alu uvm components will derive from these
+	$(VLOG) $(UVM_INCDIR) $(BASE_TEST_INCDIR) test/base_combinational_agent.sv
 
 	# package
 	$(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) test/alu/alu_pkg.sv

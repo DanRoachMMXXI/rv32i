@@ -48,6 +48,8 @@ matrix four-by-four-matrix:
 
 ALU_TEST_INCDIR = +incdir+./test/alu
 alu:
+	vlib work
+
 	# uvm package
 	$(VLOG) $(UVM_INCDIR) $(UVM_SRC)/uvm_pkg.sv
 
@@ -55,13 +57,16 @@ alu:
 	$(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) src/alu.sv test/alu/alu_if.sv
 
 	# base uvm components - alu uvm components will derive from these
-	$(VLOG) $(UVM_INCDIR) $(BASE_TEST_INCDIR) test/base_combinational_agent.sv
+	$(VLOG) $(UVM_INCDIR) $(BASE_TEST_INCDIR) test/base_combinational_agent.sv test/base_combinational_env.sv
 
 	# package
 	$(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) test/alu/alu_pkg.sv
 
 	# components
-	$(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) test/alu/alu_driver.sv test/alu/alu_monitor.sv test/alu/alu_agent.sv test/alu/alu_env.sv test/alu/alu_scoreboard.sv test/alu/alu_test.sv
+	# $(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) -mfcu test/alu/alu_driver.sv test/alu/alu_monitor.sv test/alu/alu_agent.sv
+	# $(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) test/alu/alu_scoreboard.sv
+	# $(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) test/alu/alu_env.sv
+	# $(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) test/alu/alu_test.sv
 
 	# top level testbench
 	$(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) test/alu/alu_tb_top.sv

@@ -1,8 +1,6 @@
 `include "uvm_macros.svh"
 import uvm_pkg::*;
 
-`include "alu_agent.sv"
-`include "alu_scoreboard.sv"
 import alu_pkg::*;
 
 class alu_env extends uvm_env;

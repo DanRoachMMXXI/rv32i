@@ -1,7 +1,6 @@
 `include "uvm_macros.svh"
 import uvm_pkg::*;
 
-`include "alu_env.sv"
 import alu_pkg::*;
 
 class alu_test extends uvm_test;

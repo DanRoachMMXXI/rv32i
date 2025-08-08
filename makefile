@@ -56,9 +56,6 @@ alu:
 	# DUT and interface
 	$(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) src/alu.sv test/alu/alu_if.sv
 
-	# base uvm components - alu uvm components will derive from these
-	$(VLOG) $(UVM_INCDIR) $(BASE_TEST_INCDIR) test/base_combinational_agent.sv test/base_combinational_env.sv
-
 	# package
 	$(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) test/alu/alu_pkg.sv
 

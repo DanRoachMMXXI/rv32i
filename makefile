@@ -78,17 +78,27 @@ alu:
 	# run simulation
 	$(VSIM) $(VSIM_ARGS) alu_tb_top
 
-register_file:
-	$(VLOG) src/register_file.sv test/register_file_tb.sv
-
+INSTRUCTION_DECODE_TEST_INCDIR = +incdir+./test/instruction_decode
 instruction_decode:
-	$(VLOG) src/instruction_decode.sv test/instruction_decode_tb.sv
+	vlib work
 
-memory:
-	$(VLOG) src/memory.sv
+	# uvm package
+	$(VLOG) $(UVM_INCDIR) $(UVM_SRC)/uvm_pkg.sv
 
-branch:
-	$(VLOG) src/branch_*.sv
+	# opcode constant package
+	$(VLOG) src/opcode.sv
+
+	# DUT and interface
+	$(VLOG) $(UVM_INCDIR) $(INSTRUCTION_DECODE_TEST_INCDIR) src/instruction_decode.sv test/instruction_decode/instruction_decode_if.sv
+
+	# instruction decode UVM package
+	$(VLOG) $(UVM_INCDIR) $(INSTRUCTION_DECODE_TEST_INCDIR) test/instruction_decode/instruction_decode_pkg.sv
+
+	# top level testbench
+	$(VLOG) $(UVM_INCDIR) $(INSTRUCTION_DECODE_TEST_INCDIR) test/instruction_decode/instruction_decode_tb_top.sv
+
+	# run simulation
+	$(VSIM) $(VSIM_ARGS) instruction_decode_tb_top
 
 reorder_buffer:
 	$(VLOG) src/reorder_buffer.sv

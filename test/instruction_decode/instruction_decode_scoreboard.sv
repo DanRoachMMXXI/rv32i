@@ -1,12 +1,12 @@
 `include "uvm_macros.svh"
 import uvm_pkg::*;
 
-import alu_pkg::*;
+import instruction_decode_pkg::*;
 
-class alu_scoreboard extends uvm_component;	// see if it should be component or scoreboard
-	`uvm_component_utils(alu_scoreboard)
+class instruction_decode_scoreboard extends uvm_component;	// see if it should be component or scoreboard
+	`uvm_component_utils(instruction_decode_scoreboard)
 
-	uvm_analysis_imp #(alu_transaction, alu_scoreboard) analysis_export;
+	uvm_analysis_imp #(instruction_decode_transaction, instruction_decode_scoreboard) analysis_export;
 	// no need for the expected state here, it's a combinational component
 	
 	function new(string name, uvm_component parent);
@@ -18,8 +18,8 @@ class alu_scoreboard extends uvm_component;	// see if it should be component or 
 		super.build_phase(phase);
 	endfunction
 
-	function void write(alu_transaction tx);
-		// TODO: test zero signal as well
+	function void write(instruction_decode_transaction tx);
+		// TODO: write validation logic
 		logic [31:0] expected_result;
 		string msg;
 		case ({tx.sign, tx.op})

@@ -1,18 +1,9 @@
+import opcode::*;
+
 module immediate_decode #(parameter XLEN=32) (
 	input logic [31:0] instruction,
 	output logic [XLEN-1:0] immediate
 	);
-
-	// TODO: consolidate all definitions of this into one
-	localparam R_TYPE = 'b0110011;
-	localparam I_TYPE_ALU = 'b0010011;
-	localparam I_TYPE_LOAD = 'b0000011;
-	localparam I_TYPE_JALR = 'b1100111;
-	localparam B_TYPE = 'b1100011;
-	localparam S_TYPE = 'b0100011;
-	localparam JAL = 'b1101111;
-	localparam LUI = 'b0110111;
-	localparam AUIPC = 'b0010111;
 
 	logic [6:0] opcode = instruction[6:0];
 
@@ -69,10 +60,6 @@ module branch_decode (
 	output logic branch_base
 	);
 
-	localparam I_TYPE_JALR = 'b1100111;
-	localparam B_TYPE = 'b1100011;
-	localparam JAL = 'b1101111;
-
 	assign jump = (opcode == JAL || opcode == I_TYPE_JALR) ? 1 : 0;
 	assign branch = (opcode == B_TYPE) ? 1 : 0;
 	always_comb
@@ -94,16 +81,6 @@ module alu_decode (
 	output logic [1:0] op1_src,
 	output logic op2_src
 	);
-
-	localparam R_TYPE = 'b0110011;
-	localparam I_TYPE_ALU = 'b0010011;
-	localparam I_TYPE_LOAD = 'b0000011;
-	localparam I_TYPE_JALR = 'b1100111;
-	localparam B_TYPE = 'b1100011;
-	localparam S_TYPE = 'b0100011;
-	localparam JAL = 'b1101111;
-	localparam LUI = 'b0110111;
-	localparam AUIPC = 'b0010111;
 
 	logic [6:0] opcode = instruction[6:0];
 	logic [2:0] funct3 = instruction[14:12];
@@ -236,16 +213,6 @@ module instruction_decode #(parameter XLEN=32) (
 	output logic rf_write_en,
 	output logic mem_write_en
 	);
-
-	localparam R_TYPE = 'b0110011;
-	localparam I_TYPE_ALU = 'b0010011;
-	localparam I_TYPE_LOAD = 'b0000011;
-	localparam I_TYPE_JALR = 'b1100111;
-	localparam B_TYPE = 'b1100011;
-	localparam S_TYPE = 'b0100011;
-	localparam JAL = 'b1101111;
-	localparam LUI = 'b0110111;
-	localparam AUIPC = 'b0010111;
 
 	logic [6:0] opcode = instruction[6:0];
 	logic [2:0] funct3 = instruction[14:12];

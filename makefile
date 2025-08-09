@@ -10,6 +10,7 @@ VLOG = vlog
 VSIM = vsim
 VSIM_ARGS = -sv_lib $(UVM_HOME)/lib/uvm_dpi64 -c -do "run -all; quit"
 
+SRC_INCDIR = +incdir+./src
 UVM_INCDIR = +incdir+$(UVM_SRC)
 BASE_TEST_INCDIR = +incdir+./test
 
@@ -22,6 +23,7 @@ uvm:
 
 single_cycle:
 	verilator --binary -j 0 test/single_cycle.sv \
+		src/opcode.sv \
 		src/alu* \
 		src/branch_* \
 		src/data_memory.sv \
@@ -30,6 +32,17 @@ single_cycle:
 		src/register* \
 		src/rf_wb_select.sv \
 		src/single_cycle.sv
+
+	# maybe useful in the future when I can ditch verilator
+	# $(VLOG) src/opcode.sv
+	# $(VLOG) $(SRC_INCDIR) src/alu* \
+	# 	src/branch_* \
+	# 	src/data_memory.sv \
+	# 	src/instruction* \
+	# 	src/pc_select.sv \
+	# 	src/register* \
+	# 	src/rf_wb_select.sv \
+	# 	src/single_cycle.sv
 
 simple-sum:
 	$(GCC) test/programs/simple-sum/simple-sum.c -o test/programs/simple-sum/simple-sum.elf
@@ -56,14 +69,8 @@ alu:
 	# DUT and interface
 	$(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) src/alu.sv test/alu/alu_if.sv
 
-	# package
+	# ALU UVM package
 	$(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) test/alu/alu_pkg.sv
-
-	# components
-	# $(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) -mfcu test/alu/alu_driver.sv test/alu/alu_monitor.sv test/alu/alu_agent.sv
-	# $(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) test/alu/alu_scoreboard.sv
-	# $(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) test/alu/alu_env.sv
-	# $(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) test/alu/alu_test.sv
 
 	# top level testbench
 	$(VLOG) $(UVM_INCDIR) $(ALU_TEST_INCDIR) test/alu/alu_tb_top.sv

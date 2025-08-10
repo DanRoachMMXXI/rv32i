@@ -79,7 +79,7 @@ alu:
 	$(VSIM) $(VSIM_ARGS) alu_tb_top
 
 INSTRUCTION_DECODE_TEST_INCDIR = +incdir+./test/instruction_decode
-instruction_decode:
+instruction_decode id:
 	vlib work
 
 	# uvm package
@@ -105,3 +105,4 @@ reorder_buffer:
 
 clean:
 	rm -rf work transcript *.log *.wlf
+	rm -rf obj_dir

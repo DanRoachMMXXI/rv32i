@@ -28,12 +28,7 @@ class instruction_decode_driver extends uvm_driver #(instruction_decode_transact
 
 			// set the inputs of the interface from the
 			// transaction
-			// TODO change from alu
-			virt_instruction_decode_if.a <= tx.a;
-			virt_instruction_decode_if.b <= tx.b;
-			virt_instruction_decode_if.op <= tx.op;
-			virt_instruction_decode_if.sign <= tx.sign;
-
+			virt_instruction_decode_if.instruction <= tx.instruction;
 			# 1
 
 			seq_item_port.item_done();

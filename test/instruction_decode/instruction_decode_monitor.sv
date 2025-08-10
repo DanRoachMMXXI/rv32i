@@ -29,13 +29,22 @@ class instruction_decode_monitor extends uvm_monitor;
 			#1
 
 			// read the vinstruction_decodees from the virtual interface
-			// TODO change to instruction decode signals
-			tx.a = virt_instruction_decode_if.a;
-			tx.b = virt_instruction_decode_if.b;
-			tx.op = virt_instruction_decode_if.op;
-			tx.sign = virt_instruction_decode_if.sign;
-			tx.result = virt_instruction_decode_if.result;
-			tx.zero = virt_instruction_decode_if.zero;
+			tx.instruction <= virt_instruction_decode_if.instruction;
+			tx.rs1 <= virt_instruction_decode_if.rs1;
+			tx.rs2 <= virt_instruction_decode_if.rs2;
+			tx.rd <= virt_instruction_decode_if.rd;
+			tx.immediate <= virt_instruction_decode_if.immediate;
+			tx.op1_src <= virt_instruction_decode_if.op1_src;
+			tx.op2_src <= virt_instruction_decode_if.op2_src;
+			tx.rd_select <= virt_instruction_decode_if.rd_select;
+			tx.alu_op <= virt_instruction_decode_if.alu_op;
+			tx.sign <= virt_instruction_decode_if.sign;
+			tx.branch <= virt_instruction_decode_if.branch;
+			tx.branch_if_zero <= virt_instruction_decode_if.branch_if_zero;
+			tx.jump <= virt_instruction_decode_if.jump;
+			tx.branch_base <= virt_instruction_decode_if.branch_base;
+			tx.rf_write_en <= virt_instruction_decode_if.rf_write_en;
+			tx.mem_write_en <= virt_instruction_decode_if.mem_write_en;
 
 			// write to analysis port
 			analysis_port.write(tx);

@@ -3,7 +3,9 @@ import uvm_pkg::*;
 
 import instruction_decode_pkg::*;
 
-class instruction_decode_scoreboard extends uvm_component;	// see if it should be component or scoreboard
+import opcode::*;
+
+class instruction_decode_scoreboard #(parameter XLEN=32) extends uvm_component;
 	`uvm_component_utils(instruction_decode_scoreboard)
 
 	uvm_analysis_imp #(instruction_decode_transaction, instruction_decode_scoreboard) analysis_export;
@@ -19,45 +21,63 @@ class instruction_decode_scoreboard extends uvm_component;	// see if it should b
 	endfunction
 
 	function void write(instruction_decode_transaction tx);
-		// TODO: write validation logic
-		logic [31:0] expected_result;
-		string msg;
-		case ({tx.sign, tx.op})
-			4'b0000:	// add
-				expected_result = tx.a + tx.b;
-			4'b0001:	// left shift
-				expected_result = tx.a << tx.b[4:0];
-			4'b0010:	// less than signed
-				expected_result = ($signed(tx.a) < $signed(tx.b)) ? 1 : 0;
-			4'b0011:	// less than unsigned
-				expected_result = (tx.a < tx.b) ? 1 : 0;
-			4'b0100:	// xor
-				expected_result = tx.a ^ tx.b;
-			4'b0101:	// logical right shift
-				expected_result = tx.a >> tx.b[4:0];
-			4'b0110:	// or
-				expected_result = tx.a | tx.b;
-			4'b0111:	// and
-				expected_result = tx.a & tx.b;
-			4'b1000:	// sub
-				expected_result = tx.a - tx.b;
-			4'b1101:	// arithmetic right shift
-				expected_result = $signed($signed(tx.a) >>> tx.b[4:0]);
-			default:	// throw error here, invalid arg
-			begin
-				msg = $sformatf("ALU received invalid combination of sign %0d and op %0d", tx.sign, tx.op);
-				`uvm_error("SCOREBOARD", msg)
-			end
-		endcase
-
-		if (tx.result !== expected_result) begin
-			msg = $sformatf("ALU output 0x%0h mismatched expected output 0x%0h for sign 0x%0h and op 0x%0h", tx.result, expected_result, tx.sign, tx.op);
-			`uvm_error("SCOREBOARD", msg)
-		end
+		// TODO figure out why instruction is always X
+		if (!validate_immediate(tx.instruction, tx.immediate))
+			`uvm_error("SCOREBOARD", $sformatf("Immediate value 0x%0h mismatched expected output 0x%0h for instruction 0x%0h", tx.immediate, expected_immediate(tx.instruction), tx.instruction))
 		else
-		begin
-			msg = $sformatf("ALU output 0x%0h matched expected output for sign 0x%0h and op 0x%0h", tx.result, tx.sign, tx.op);
-			`uvm_info("SCOREBOARD", msg, UVM_NONE)
-		end
+			`uvm_info("SCOREBOARD", $sformatf("Immediate value 0x%0h mismatched expected output 0x%0h for instruction 0x%0h", tx.immediate, expected_immediate(tx.instruction), tx.instruction), UVM_NONE)
+
+		// TODO add validation logic for other decode signals
+	endfunction
+
+	function logic validate_immediate(logic[31:0] instruction, logic[XLEN-1:0] immediate);
+		if (instruction[6:0] == R_TYPE)
+			// nothing to validate, any immediate is acceptable
+			// because no control signals will route it to
+			// anything that changes the state of the cpu
+			return 1;
+		else if (instruction[6:0] inside { opcodes })	// all other valid opcodes
+			return immediate == expected_immediate(instruction);
+		else
+			return 0;	// unsupported opcode
+	endfunction
+
+	function logic[XLEN-1:0] expected_immediate(logic[31:0] instruction);
+		if (instruction[6:0] inside { I_TYPE_ALU, I_TYPE_LOAD, I_TYPE_JALR })
+			return {
+				{XLEN{instruction[31]}},
+				instruction[31:20]
+			};
+		else if (instruction[6:0] == B_TYPE)
+			return {
+				{XLEN{instruction[31]}},
+				instruction[31],
+				instruction[7],
+				instruction[30:25],
+				instruction[11:8],
+				1'b0
+			};
+		else if (instruction[6:0] == S_TYPE)
+			return {
+				{XLEN{instruction[31]}},
+				instruction[31:25],
+				instruction[11:7]
+			};
+		else if (instruction[6:0] == JAL)
+			return {
+				{XLEN{instruction[31]}},
+				instruction[20],
+				instruction[10:1],
+				instruction[11],
+				instruction[19:12],
+				1'b0
+			};
+		else if (instruction[6:0] inside { LUI, AUIPC })
+			return {
+				instruction[31:12],
+				{12{1'b0}}
+			};
+		else
+			return 0;	// unsupported opcode
 	endfunction
 endclass

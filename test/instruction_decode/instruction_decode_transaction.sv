@@ -9,18 +9,8 @@ class instruction_decode_transaction #(parameter XLEN=32) extends uvm_sequence_i
 	rand logic [31:0] instruction;
 
 	constraint c_opcode {
-		// opcode constraint
-		instruction[6:0] inside {
-			R_TYPE,
-			I_TYPE_ALU,
-			I_TYPE_LOAD,
-			I_TYPE_JALR,
-			B_TYPE,
-			S_TYPE,
-			JAL,
-			LUI,
-			AUIPC
-		};
+		// constrains the opcode to legal opcodes
+		instruction[6:0] inside { opcodes };
 	}
 
 	constraint c_funct7 {

@@ -1,4 +1,4 @@
-interface alu_if #(parameter XLEN=32) ();
+interface instruction_decode_if #(parameter XLEN=32) ();
 	logic [31:0] instruction;
 	logic [4:0] rs1;
 	logic [4:0] rs2;

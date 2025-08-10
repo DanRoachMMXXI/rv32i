@@ -23,7 +23,7 @@ module instruction_decode_tb_top;
 	.jump(virt_instruction_decode_if.jump),
 	.branch_base(virt_instruction_decode_if.branch_base),
 	.rf_write_en(virt_instruction_decode_if.rf_write_en),
-	.mem_write_en(virt_instruction_decode_if.mem_write_en),
+	.mem_write_en(virt_instruction_decode_if.mem_write_en)
 	);
 
 	initial begin

@@ -80,4 +80,49 @@ class instruction_decode_scoreboard #(parameter XLEN=32) extends uvm_component;
 		else
 			return 0;	// unsupported opcode
 	endfunction
+
+	/*
+	* Validating all the instruction decode signals might be a complete
+	* organizational nightmare due to how many fucking signals there are
+	* coming out of this one component.  This could be indicative of
+	* a need to restructure my decoding logic into smaller more
+	* comprehensible components.  I've already got most of those signals
+	* modularized anyways.
+	*
+	* Anyways for now, I'm going to structure this test in the following
+	* ways
+	* validate_<component>_signals
+	* + validate_<signal1>
+	* | + <signal1> == expected_<signal1>
+	* + validate_<signal2>
+	* | + <signal2> == expected_<signal2>
+	* + ...
+	*/
+	function logic validate_branch_signals(logic[31:0] instruction);
+		// Rather than just &&ing these together, checking them
+		// individually to allow me to log the actual signal the
+		// validation failed on.
+		logic valid = 1;
+		if (!validate_jump(instruction)) begin
+			`uvm_error("SCOREBOARD", $sformatf("jump signal %d did not match the expected value %d for instruction 0x%0h", tx.jump, expected_jump(instruction), tx.instruction))
+			valid = 0;
+		end
+
+		if (!validate_branch(instruction)) begin
+			`uvm_error("SCOREBOARD", $sformatf("branch signal %d did not match the expected value %d for instruction 0x%0h", tx.branch, expected_branch(instruction), tx.instruction))
+			valid = 0;
+		end
+
+		if (!validate_branch_if_zero(instruction)) begin
+			`uvm_error("SCOREBOARD", $sformatf("branch_if_zero signal %d did not match the expected value %d for instruction 0x%0h", tx.branch_if_zero, expected_branch_if_zero(instruction), tx.instruction))
+			valid = 0;
+		end
+
+		if (!validate_branch_base(instruction)) begin
+			`uvm_error("SCOREBOARD", $sformatf("branch_base signal %d did not match the expected value %d for instruction 0x%0h", tx.branch_base, expected_branch_base(instruction), tx.instruction))
+			valid = 0;
+		end
+
+		return valid;
+	endfunction
 endclass

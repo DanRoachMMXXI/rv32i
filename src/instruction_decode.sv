@@ -6,6 +6,7 @@ module immediate_decode #(parameter XLEN=32) (
 	);
 
 	logic [6:0] opcode;
+
 	assign opcode = instruction[6:0];
 
 	// Immediate value computation and assignment
@@ -83,8 +84,11 @@ module alu_decode (
 	output logic op2_src
 	);
 
-	logic [6:0] opcode = instruction[6:0];
-	logic [2:0] funct3 = instruction[14:12];
+	logic [6:0] opcode;
+	logic [2:0] funct3;
+
+	assign opcode = instruction[6:0];
+	assign funct3 = instruction[14:12];
 
 	// ALU operation and sign
 	always_comb
@@ -215,8 +219,11 @@ module instruction_decode #(parameter XLEN=32) (
 	output logic mem_write_en
 	);
 
-	logic [6:0] opcode = instruction[6:0];
-	logic [2:0] funct3 = instruction[14:12];
+	logic [6:0] opcode;
+	logic [2:0] funct3;
+
+	assign opcode = instruction[6:0];
+	assign funct3 = instruction[14:12];
 
 	// these values always map to these bits in the instruction ... but
 	// these bits in the instruction are not always interpreted as these

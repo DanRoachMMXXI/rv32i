@@ -5,7 +5,8 @@ module immediate_decode #(parameter XLEN=32) (
 	output logic [XLEN-1:0] immediate
 	);
 
-	logic [6:0] opcode = instruction[6:0];
+	logic [6:0] opcode;
+	assign opcode = instruction[6:0];
 
 	// Immediate value computation and assignment
 	// Page 27

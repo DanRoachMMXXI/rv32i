@@ -25,7 +25,7 @@ class instruction_decode_scoreboard #(parameter XLEN=32) extends uvm_component;
 		if (!validate_immediate(tx.instruction, tx.immediate))
 			`uvm_error("SCOREBOARD", $sformatf("Immediate value 0x%0h mismatched expected output 0x%0h for instruction 0x%0h", tx.immediate, expected_immediate(tx.instruction), tx.instruction))
 		else
-			`uvm_info("SCOREBOARD", $sformatf("Immediate value 0x%0h mismatched expected output 0x%0h for instruction 0x%0h", tx.immediate, expected_immediate(tx.instruction), tx.instruction), UVM_NONE)
+			`uvm_info("SCOREBOARD", $sformatf("Immediate value 0x%0h matched expected output for instruction 0x%0h", tx.immediate, tx.instruction), UVM_NONE)
 
 		// TODO add validation logic for other decode signals
 	endfunction

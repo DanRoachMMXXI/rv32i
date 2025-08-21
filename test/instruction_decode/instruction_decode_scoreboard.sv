@@ -26,9 +26,9 @@ class instruction_decode_scoreboard #(parameter XLEN=32) extends uvm_component;
 		else
 			`uvm_info("SCOREBOARD", $sformatf("Immediate value 0x%0h matched expected output for instruction 0x%0h", tx.immediate, tx.instruction), UVM_NONE)
 
-		// TODO add validation logic for other decode signals
 		validate_branch_signals(tx);	// no need to return anything - validation done inside the function
 		validate_alu_signals(tx);
+		validate_misc_signals(tx);
 	endfunction
 
 	function logic validate_immediate(logic[31:0] instruction, logic[XLEN-1:0] immediate);
@@ -101,10 +101,10 @@ class instruction_decode_scoreboard #(parameter XLEN=32) extends uvm_component;
 	*/
 	function void validate_branch_signals(instruction_decode_transaction tx);
 		// expected signals
-		logic expected_jump = expected_jump(tx.instruction);
-		logic expected_branch = expected_branch(tx.instruction);
-		logic expected_branch_if_zero = expected_branch_if_zero(tx.instruction);
-		logic expected_branch_base = expected_branch_base(tx.instruction);
+		logic expected_jump = expected_jump_f(tx.instruction);
+		logic expected_branch = expected_branch_f(tx.instruction);
+		logic expected_branch_if_zero = expected_branch_if_zero_f(tx.instruction);
+		logic expected_branch_base = expected_branch_base_f(tx.instruction);
 
 		// validate tx.jump
 		if (tx.jump != expected_jump) begin
@@ -127,28 +127,28 @@ class instruction_decode_scoreboard #(parameter XLEN=32) extends uvm_component;
 		end
 	endfunction
 
-	function logic expected_jump(logic[31:0] instruction);
+	function logic expected_jump_f(logic[31:0] instruction);
 		if (instruction[6:0] == JAL || instruction[6:0] == I_TYPE_JALR)
 			return 1;
 		else
 			return 0;
 	endfunction
 
-	function logic expected_branch(logic[31:0] instruction);
+	function logic expected_branch_f(logic[31:0] instruction);
 		if (instruction[6:0] == B_TYPE)
 			return 1;
 		else
 			return 0;
 	endfunction
 
-	function logic expected_branch_if_zero(logic[31:0] instruction);
+	function logic expected_branch_if_zero_f(logic[31:0] instruction);
 		if (instruction[14:12] inside { 'b000, 'b011, 'b111 })
 			return 1;
 		else
 			return 0;
 	endfunction
 
-	function logic expected_branch_base(logic[31:0] instruction);
+	function logic expected_branch_base_f(logic[31:0] instruction);
 		if (instruction[6:0] == I_TYPE_JALR)
 			return 1;
 		else
@@ -156,26 +156,134 @@ class instruction_decode_scoreboard #(parameter XLEN=32) extends uvm_component;
 	endfunction
 
 	function void validate_alu_signals(instruction_decode_transaction tx);
-		logic [2:0] expected_alu_op = expected_alu_op(tx.instruction);	// TODO args
-		logic expected_sign = expected_sign(tx.instruction);
-		logic [1:0] expected_op1_src = expected_op1_src(tx.instruction);
-		logic expected_op2_src = expected_op2_src(tx.instruction);
+		logic [2:0] expected_alu_op = expected_alu_op_f(tx.instruction);
+		logic expected_sign = expected_sign_f(tx.instruction);
+		logic [1:0] expected_op1_src = expected_op1_src_f(tx.instruction);
+		logic expected_op2_src = expected_op2_src_f(tx.instruction);
 
 		if (tx.alu_op != expected_alu_op) begin
-			`uvm_error("SCOREBOARD", $sformatf("alu_op signal 0x%0h did not match expected value 0x%0h for instruction 0x%0h", tx.alu_op, expected_alu_op, tx.instruction)
+			`uvm_error("SCOREBOARD", $sformatf("alu_op signal 0x%0h did not match expected value 0x%0h for instruction 0x%0h", tx.alu_op, expected_alu_op, tx.instruction))
 		end
 
 		if (tx.sign != expected_sign) begin
-			`uvm_error("SCOREBOARD", $sformatf("sign signal 0x%0h did not match expected value 0x%0h for instruction 0x%0h", tx.sign, expected_sign, tx.instruction)
+			`uvm_error("SCOREBOARD", $sformatf("sign signal 0x%0h did not match expected value 0x%0h for instruction 0x%0h", tx.sign, expected_sign, tx.instruction))
 		end
 
 		if (tx.op1_src != expected_op1_src) begin
-			`uvm_error("SCOREBOARD", $sformatf("op1_src signal 0x%0h did not match expected value 0x%0h for instruction 0x%0h", tx.op1_src, expected_op1_src, tx.instruction)
+			`uvm_error("SCOREBOARD", $sformatf("op1_src signal 0x%0h did not match expected value 0x%0h for instruction 0x%0h", tx.op1_src, expected_op1_src, tx.instruction))
 		end
 
 		if (tx.op2_src != expected_op2_src) begin
-			`uvm_error("SCOREBOARD", $sformatf("op2_src signal 0x%0h did not match expected value 0x%0h for instruction 0x%0h", tx.op2_src, expected_op2_src, tx.instruction)
+			`uvm_error("SCOREBOARD", $sformatf("op2_src signal 0x%0h did not match expected value 0x%0h for instruction 0x%0h", tx.op2_src, expected_op2_src, tx.instruction))
 		end
+	endfunction
+
+	function logic[2:0] expected_alu_op_f(logic[31:0] instruction);
+		logic [6:0] opcode = instruction[6:0];
+		logic [2:0] funct3 = instruction[14:12];
+
+		if (opcode == B_TYPE) begin
+			if (funct3 inside { 'b000, 'b001 })
+				return 'b000;
+			else if (funct3 inside { 'b100, 'b101 })
+				return 'b010;
+			else if (funct3 inside { 'b110, 'b111 })
+				return 'b011;
+			else
+				`uvm_error("SCOREBOARD", $sformatf("Detected an invalid combination of opcode 0x%0h and funct3 0x%0h", opcode, funct3))
+		end
+		else if (opcode == LUI || opcode == AUIPC || opcode == I_TYPE_LOAD || opcode == S_TYPE)
+			return 'b000;
+		else
+			return funct3;
+	endfunction
+
+	function logic[2:0] expected_sign_f(logic[31:0] instruction);
+		logic [6:0] opcode = instruction[6:0];
+		logic [2:0] funct3 = instruction[14:12];
+
+		if (opcode == B_TYPE) begin
+			if (funct3 inside { 'b000, 'b001 })
+				return 1;
+			else if (funct3 inside { 'b100, 'b101, 'b110, 'b111 })
+				return 0;
+			else
+			begin
+				`uvm_error("SCOREBOARD", $sformatf("Detected an invalid combination of opcode 0x%0h and funct3 0x%0h on instruction 0x%0h", opcode, funct3, instruction))
+				return 0;
+			end
+		end
+		else if (opcode == LUI || opcode == AUIPC || opcode == I_TYPE_LOAD || opcode == S_TYPE)
+			return 0;
+		else if (opcode == R_TYPE && instruction[31:25] == 'b0100000)
+			return 1;
+		else
+			return 0;
+	endfunction
+
+	function logic[1:0] expected_op1_src_f(logic[31:0] instruction);
+		logic [6:0] opcode = instruction[6:0];
+
+		if (opcode == LUI)
+			return 2;
+		else if (opcode == AUIPC)
+			return 1;
+		else
+			return 0;
+	endfunction
+
+	function logic expected_op2_src_f(logic[31:0] instruction);
+		logic [6:0] opcode = instruction[6:0];
+
+		if (opcode inside { I_TYPE_ALU, I_TYPE_LOAD, I_TYPE_JALR, S_TYPE, LUI })
+			return 1;
+		else
+			return 0;
+	endfunction
+
+	function void validate_misc_signals(instruction_decode_transaction tx);
+		logic [1:0] expected_rd_select = expected_rd_select_f(tx.instruction);
+		logic expected_rf_write_en = expected_rf_write_en_f(tx.instruction);
+		logic expected_mem_write_en = expected_mem_write_en_f(tx.instruction);
+
+		if (tx.rd_select != expected_rd_select)
+			`uvm_error("SCOREBOARD", $sformatf("rd_select value b%0b did not match expected value b%0b for instruction 0x%0h", tx.rd_select, expected_rd_select, tx.instruction))
+		if (tx.rf_write_en != expected_rf_write_en)
+			`uvm_error("SCOREBOARD", $sformatf("rf_write_en value b%0b did not match expected value b%0b for instruction 0x%0h", tx.rf_write_en, expected_rf_write_en, tx.instruction))
+		if (tx.mem_write_en != expected_mem_write_en)
+			`uvm_error("SCOREBOARD", $sformatf("mem_write_en value b%0b did not match expected value b%0b for instruction 0x%0h", tx.mem_write_en, expected_mem_write_en, tx.instruction))
+	endfunction
+
+	function logic[1:0] expected_rd_select_f(logic[31:0] instruction);
+		logic [6:0] opcode = instruction[6:0];
+		
+		// rd_select
+		if (opcode inside { R_TYPE, I_TYPE_ALU, LUI, AUIPC })
+			return 0;
+		else if (opcode == I_TYPE_LOAD)
+			return 1;
+		else if (opcode inside { JAL, I_TYPE_JALR })
+			return 2;
+		else
+			return 0;	// writeback not enabled for these opcodes
+	endfunction
+
+	function logic expected_rf_write_en_f(logic[31:0] instruction);
+		logic [6:0] opcode = instruction[6:0];
+		
+		if (opcode inside { LUI, AUIPC, R_TYPE, JAL, I_TYPE_ALU, I_TYPE_LOAD, I_TYPE_JALR })
+			return 1;
+		else
+			return 0;
+	endfunction
+
+	function logic expected_mem_write_en_f(logic[31:0] instruction);
+		logic [6:0] opcode = instruction[6:0];
+		
+		if (opcode == S_TYPE)
+			return 1;
+		else
+			return 0;
 	endfunction
 
 endclass

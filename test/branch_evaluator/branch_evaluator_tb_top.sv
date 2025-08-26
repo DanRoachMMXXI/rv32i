@@ -7,24 +7,19 @@ module branch_evaluator_tb_top;
 	branch_evaluator_if #(.XLEN(32)) virt_branch_evaluator_if();
 
 	// DUT instantiation
-	branch_evaluator #(.XLEN(32)) _branch_evaluator(
-	.instruction(virt_branch_evaluator_if.instruction),
-	.rs1(virt_branch_evaluator_if.rs1),
-	.rs2(virt_branch_evaluator_if.rs2),
-	.rd(virt_branch_evaluator_if.rd),
-	.immediate(virt_branch_evaluator_if.immediate),
-	.op1_src(virt_branch_evaluator_if.op1_src),
-	.op2_src(virt_branch_evaluator_if.op2_src),
-	.rd_select(virt_branch_evaluator_if.rd_select),
-	.alu_op(virt_branch_evaluator_if.alu_op),
-	.sign(virt_branch_evaluator_if.sign),
-	.branch(virt_branch_evaluator_if.branch),
-	.branch_if_zero(virt_branch_evaluator_if.branch_if_zero),
-	.jump(virt_branch_evaluator_if.jump),
-	.branch_base(virt_branch_evaluator_if.branch_base),
-	.rf_write_en(virt_branch_evaluator_if.rf_write_en),
-	.mem_write_en(virt_branch_evaluator_if.mem_write_en)
-	);
+	branch_evaluator #(.XLEN(32)) branch_evaluator(
+		// inputs
+		.pc_plus_four(virt_branch_evaluator_if.pc_plus_four),
+		.predicted_next_instruction(virt_branch_evaluator_if.predicted_next_instruction),
+		.evaluated_branch_target(virt_branch_evaluator_if.evaluated_branch_target),
+		.jump(virt_branch_evaluator_if.jump),
+		.branch(virt_branch_evaluator_if.branch),
+		.branch_if_zero(virt_branch_evaluator_if.branch_if_zero),
+		.zero(virt_branch_evaluator_if.zero),
+		.branch_prediction(virt_branch_evaluator_if.branch_prediction),
+		// outputs
+		.next_instruction(virt_branch_evaluator_if.next_instruction),
+		.branch_mispredicted(virt_branch_evaluator_if.branch_mispredicted));
 
 	initial begin
 		// provide the virtual interface to the driver via uvm_config_db

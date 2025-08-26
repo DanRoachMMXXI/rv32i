@@ -78,6 +78,25 @@ alu:
 	# run simulation
 	$(VSIM) $(VSIM_ARGS) alu_tb_top
 
+BRANCH_EVALUATOR_TEST_INCDIR = +incdir+./test/branch_evaluator
+be branch_evaluator:
+	vlib work
+
+	# uvm package
+	$(VLOG) $(UVM_INCDIR) $(UVM_SRC)/uvm_pkg.sv
+
+	# DUT and interface
+	$(VLOG) $(UVM_INCDIR) $(BRANCH_EVALUATOR_TEST_INCDIR) src/branch_evaluator.sv test/branch_evaluator/branch_evaluator_if.sv
+
+	# BRANCH_EVALUATOR UVM package
+	$(VLOG) $(UVM_INCDIR) $(BRANCH_EVALUATOR_TEST_INCDIR) test/branch_evaluator/branch_evaluator_pkg.sv
+
+	# top level testbench
+	$(VLOG) $(UVM_INCDIR) $(BRANCH_EVALUATOR_TEST_INCDIR) test/branch_evaluator/branch_evaluator_tb_top.sv
+
+	# run simulation
+	$(VSIM) $(VSIM_ARGS) branch_evaluator_tb_top
+
 INSTRUCTION_DECODE_TEST_INCDIR = +incdir+./test/instruction_decode
 instruction_decode id:
 	vlib work

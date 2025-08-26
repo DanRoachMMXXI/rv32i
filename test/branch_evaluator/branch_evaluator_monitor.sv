@@ -23,28 +23,24 @@ class branch_evaluator_monitor extends uvm_monitor;
 
 	task run_phase(uvm_phase phase);
 		forever begin
-			branch_evaluator_transaction tx = branch_evaluator_transaction#(.XLEN(32))::type_id::create("tx");;
+			branch_evaluator_transaction tx = branch_evaluator_transaction#(.XLEN(32))::type_id::create("tx");
 			// no clock to sync with here
 
 			#1
 
-			// read the vbranch_evaluatores from the virtual interface
-			tx.instruction = virt_branch_evaluator_if.instruction;
-			tx.rs1 = virt_branch_evaluator_if.rs1;
-			tx.rs2 = virt_branch_evaluator_if.rs2;
-			tx.rd = virt_branch_evaluator_if.rd;
-			tx.immediate = virt_branch_evaluator_if.immediate;
-			tx.op1_src = virt_branch_evaluator_if.op1_src;
-			tx.op2_src = virt_branch_evaluator_if.op2_src;
-			tx.rd_select = virt_branch_evaluator_if.rd_select;
-			tx.alu_op = virt_branch_evaluator_if.alu_op;
-			tx.sign = virt_branch_evaluator_if.sign;
+			// read the values from the virtual interface
+			tx.pc_plus_four = virt_branch_evaluator_if.pc_plus_four;
+			tx.predicted_next_instruction = virt_branch_evaluator_if.predicted_next_instruction;
+			tx.evaluated_branch_target = virt_branch_evaluator_if.evaluated_branch_target;
+
+			tx.jump = virt_branch_evaluator_if.jump;
 			tx.branch = virt_branch_evaluator_if.branch;
 			tx.branch_if_zero = virt_branch_evaluator_if.branch_if_zero;
-			tx.jump = virt_branch_evaluator_if.jump;
-			tx.branch_base = virt_branch_evaluator_if.branch_base;
-			tx.rf_write_en = virt_branch_evaluator_if.rf_write_en;
-			tx.mem_write_en = virt_branch_evaluator_if.mem_write_en;
+			tx.zero = virt_branch_evaluator_if.zero;
+			tx.branch_prediction = virt_branch_evaluator_if.branch_prediction;
+
+			tx.next_instruction = virt_branch_evaluator_if.next_instruction;
+			tx.branch_mispredicted = virt_branch_evaluator_if.branch_mispredicted;
 
 			// write to analysis port
 			analysis_port.write(tx);

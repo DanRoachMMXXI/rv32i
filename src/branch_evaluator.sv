@@ -27,7 +27,8 @@ module branch_evaluator #(parameter XLEN=32) (
 	output logic branch_mispredicted
 	);
 
-	logic branch_taken = jump || (branch_if_zero == zero);
+	logic branch_taken;
+	assign branch_taken = jump || (branch && (branch_if_zero == zero));
 
 	// target jump address is already computed in decode stage
 	// to be used for prediction, so we'll just pass that through
@@ -46,6 +47,6 @@ module branch_evaluator #(parameter XLEN=32) (
 	 * if the targets don't match.  we compare the "next_instruction"
 	 * cause that's the only thing that really matters.
 	 */
-	assign branch_mispredicted = (branch && (branch_taken != branch_prediction))
+	assign branch_mispredicted = (branch_taken != branch_prediction)
 			|| (jump && (next_instruction != predicted_next_instruction));
 endmodule

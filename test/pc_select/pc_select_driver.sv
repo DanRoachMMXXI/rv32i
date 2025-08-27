@@ -28,7 +28,11 @@ class pc_select_driver extends uvm_driver #(pc_select_transaction);
 
 			// set the inputs of the interface from the
 			// transaction
-			virt_pc_select_if.instruction = tx.instruction;
+			virt_pc_select_if.pc_plus_four = tx.pc_plus_four;
+			virt_pc_select_if.evaluated_next_instruction = tx.evaluated_next_instruction;
+			virt_pc_select_if.predicted_next_instruction = tx.predicted_next_instruction;
+			virt_pc_select_if.evaluated_branch_mispredicted = tx.evaluated_branch_mispredicted;
+			virt_pc_select_if.predicted_branch_predicted_taken = tx.predicted_branch_predicted_taken;
 			# 1
 
 			seq_item_port.item_done();

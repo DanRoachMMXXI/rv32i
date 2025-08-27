@@ -1,8 +1,6 @@
 `include "uvm_macros.svh"
 import uvm_pkg::*;
 
-import opcode::*;
-
 class branch_predictor_sequence extends uvm_sequence #(branch_predictor_transaction);
 	`uvm_object_utils(branch_predictor_sequence)
 
@@ -18,8 +16,8 @@ class branch_predictor_sequence extends uvm_sequence #(branch_predictor_transact
 			start_item(tx);		// handshake to communicate with driver
 			
 			// no sim license workaround
-            tx.pc_plus_four = $urandom_range(0, (1<<XLEN)-1);
-            tx.branch_target = $urandom_range(0, (1<<XLEN)-1);
+            tx.pc_plus_four = $urandom_range(0, (1<<31)-1);	// TODO: parameterize by XLEN
+            tx.branch_target = $urandom_range(0, (1<<31)-1);
             tx.jump = $urandom_range(0, 1);
 			if (tx.jump)	// if unconditional jump,
 				tx.branch = 0;	// not a branch

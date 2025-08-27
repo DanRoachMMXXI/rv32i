@@ -97,6 +97,25 @@ be branch_evaluator:
 	# run simulation
 	$(VSIM) $(VSIM_ARGS) branch_evaluator_tb_top
 
+BRANCH_PREDICTOR_TEST_INCDIR = +incdir+./test/branch_predictor
+bp branch_predictor:
+	vlib work
+
+	# uvm package
+	$(VLOG) $(UVM_INCDIR) $(UVM_SRC)/uvm_pkg.sv
+
+	# DUT and interface
+	$(VLOG) $(UVM_INCDIR) $(BRANCH_PREDICTOR_TEST_INCDIR) src/branch_predictor.sv test/branch_predictor/branch_predictor_if.sv
+
+	# BRANCH_PREDICTOR UVM package
+	$(VLOG) $(UVM_INCDIR) $(BRANCH_PREDICTOR_TEST_INCDIR) test/branch_predictor/branch_predictor_pkg.sv
+
+	# top level testbench
+	$(VLOG) $(UVM_INCDIR) $(BRANCH_PREDICTOR_TEST_INCDIR) test/branch_predictor/branch_predictor_tb_top.sv
+
+	# run simulation
+	$(VSIM) $(VSIM_ARGS) branch_predictor_tb_top
+
 INSTRUCTION_DECODE_TEST_INCDIR = +incdir+./test/instruction_decode
 instruction_decode id:
 	vlib work

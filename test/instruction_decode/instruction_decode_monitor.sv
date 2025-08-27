@@ -23,7 +23,7 @@ class instruction_decode_monitor extends uvm_monitor;
 
 	task run_phase(uvm_phase phase);
 		forever begin
-			instruction_decode_transaction tx = instruction_decode_transaction#(.XLEN(32))::type_id::create("tx");;
+			instruction_decode_transaction tx = instruction_decode_transaction#(.XLEN(32))::type_id::create("tx");
 			// no clock to sync with here
 
 			#1

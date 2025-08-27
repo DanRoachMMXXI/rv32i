@@ -35,7 +35,7 @@ class branch_predictor_scoreboard #(parameter XLEN=32) extends uvm_component;
                 `uvm_error("SCOREBOARD", "branch was set, but branch_target was less than pc_plus_four, and branch_predicted_taken was not set")
         end
 
-        if (!tx.jump && tx.branch && tx.branch_predicted_taken)
+        if (!tx.jump && !tx.branch && tx.branch_predicted_taken)
             `uvm_error("SCOREBOARD", "Neither jump or branch were set, but branch_predicted_taken was set")
 
 	endfunction

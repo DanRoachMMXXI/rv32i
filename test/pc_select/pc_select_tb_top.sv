@@ -8,22 +8,12 @@ module pc_select_tb_top;
 
 	// DUT instantiation
 	pc_select #(.XLEN(32)) _pc_select(
-	.instruction(virt_pc_select_if.instruction),
-	.rs1(virt_pc_select_if.rs1),
-	.rs2(virt_pc_select_if.rs2),
-	.rd(virt_pc_select_if.rd),
-	.immediate(virt_pc_select_if.immediate),
-	.op1_src(virt_pc_select_if.op1_src),
-	.op2_src(virt_pc_select_if.op2_src),
-	.rd_select(virt_pc_select_if.rd_select),
-	.alu_op(virt_pc_select_if.alu_op),
-	.sign(virt_pc_select_if.sign),
-	.branch(virt_pc_select_if.branch),
-	.branch_if_zero(virt_pc_select_if.branch_if_zero),
-	.jump(virt_pc_select_if.jump),
-	.branch_base(virt_pc_select_if.branch_base),
-	.rf_write_en(virt_pc_select_if.rf_write_en),
-	.mem_write_en(virt_pc_select_if.mem_write_en)
+		.pc_plus_four(virt_pc_select_if.pc_plus_four),
+		.evaluated_next_instruction(virt_pc_select_if.evaluated_next_instruction),
+		.predicted_next_instruction(virt_pc_select_if.predicted_next_instruction),
+		.evaluated_branch_mispredicted(virt_pc_select_if.evaluated_branch_mispredicted),
+		.predicted_branch_predicted_taken(virt_pc_select_if.predicted_branch_predicted_taken),
+		.pc_next(virt_pc_select_if.pc_next)
 	);
 
 	initial begin

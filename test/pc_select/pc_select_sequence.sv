@@ -17,11 +17,11 @@ class pc_select_sequence extends uvm_sequence #(pc_select_transaction);
 			
 			// no sim license workaround
 
-            tx.pc_plus_four = $urandom_range(0, (1<<XLEN)-1);
-            tx.evaluated_next_instruction = $urandom_range(0, (1<<XLEN)-1);
-            tx.predicted_next_instruction = $urandom_range(0, (1<<XLEN)-1);
-            tx.evaluated_branch_mispredicted = $urandom_range(0, 1);
-            tx.predicted_branch_predicted_taken = $urandom_range(0, 1);
+			tx.pc_plus_four = $urandom_range(0, 31);	// TODO parameterize by XLEN
+			tx.evaluated_next_instruction = $urandom_range(0, 31);
+			tx.predicted_next_instruction = $urandom_range(0, 31);
+			tx.evaluated_branch_mispredicted = $urandom_range(0, 1);
+			tx.predicted_branch_predicted_taken = $urandom_range(0, 1);
 
 			finish_item(tx);	// send transaction to driver
 			#1;

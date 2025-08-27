@@ -19,6 +19,11 @@ class pc_select_scoreboard #(parameter XLEN=32) extends uvm_component;
 	endfunction
 
 	function void write(pc_select_transaction tx);
-        // TODO
+		if (!tx.evaluated_branch_mispredicted && !tx.predicted_branch_predicted_taken && tx.pc_next != tx.pc_plus_four)
+			`uvm_error("SCOREBOARD", "Neither evaluated_branch_mispredicted or predicted_branch_predicted_taken were set, but pc_next was not assigned pc_plus_four")
+		if (tx.evaluated_branch_mispredicted && tx.pc_next != tx.evaluated_next_instruction)
+			`uvm_error("SCOREBOARD", "The evaluated branch was mispredicted, but pc_next was not assigned evaluated_next_instruction")
+		if (!tx.evaluated_branch_mispredicted && tx.predicted_branch_predicted_taken && tx.pc_next != tx.predicted_next_instruction)
+			`uvm_error("SCOREBOARD", "The evaluated branch was not mispredicted and the predicted branch was predicted taken, but pc_next was not assigned predicted_next_instruction")
 	endfunction
 endclass

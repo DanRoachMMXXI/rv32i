@@ -138,6 +138,25 @@ instruction_decode id:
 	# run simulation
 	$(VSIM) $(VSIM_ARGS) instruction_decode_tb_top
 
+PC_SELECT_TEST_INCDIR = +incdir+./test/pc_select
+pcsel pc_select:
+	vlib work
+
+	# uvm package
+	$(VLOG) $(UVM_INCDIR) $(UVM_SRC)/uvm_pkg.sv
+
+	# DUT and interface
+	$(VLOG) $(UVM_INCDIR) $(PC_SELECT_TEST_INCDIR) src/pc_select.sv test/pc_select/pc_select_if.sv
+
+	# PC_SELECT UVM package
+	$(VLOG) $(UVM_INCDIR) $(PC_SELECT_TEST_INCDIR) test/pc_select/pc_select_pkg.sv
+
+	# top level testbench
+	$(VLOG) $(UVM_INCDIR) $(PC_SELECT_TEST_INCDIR) test/pc_select/pc_select_tb_top.sv
+
+	# run simulation
+	$(VSIM) $(VSIM_ARGS) pc_select_tb_top
+
 reorder_buffer:
 	$(VLOG) src/reorder_buffer.sv
 

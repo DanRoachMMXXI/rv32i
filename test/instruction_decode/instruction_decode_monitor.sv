@@ -28,7 +28,7 @@ class instruction_decode_monitor extends uvm_monitor;
 
 			#1
 
-			// read the vinstruction_decodees from the virtual interface
+			// read the values from the virtual interface
 			tx.instruction = virt_instruction_decode_if.instruction;
 			tx.rs1 = virt_instruction_decode_if.rs1;
 			tx.rs2 = virt_instruction_decode_if.rs2;

@@ -26,9 +26,11 @@ class branch_predictor_driver extends uvm_driver #(branch_predictor_transaction)
 		forever begin
 			seq_item_port.get_next_item(tx);
 
-			// set the inputs of the interface from the
-			// transaction
-			virt_branch_predictor_if.instruction = tx.instruction;
+			// set the inputs of the interface from the transaction
+			virt_branch_predictor_if.pc_plus_four = tx.pc_plus_four;
+			virt_branch_predictor_if.branch_target = tx.branch_target;
+			virt_branch_predictor_if.jump = tx.jump;
+			virt_branch_predictor_if.branch = tx.branch;
 			# 1
 
 			seq_item_port.item_done();

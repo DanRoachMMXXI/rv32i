@@ -34,6 +34,7 @@ class pc_select_monitor extends uvm_monitor;
 			tx.predicted_next_instruction = virt_pc_select_if.predicted_next_instruction;
 			tx.evaluated_branch_mispredicted = virt_pc_select_if.evaluated_branch_mispredicted;
 			tx.predicted_branch_predicted_taken = virt_pc_select_if.predicted_branch_predicted_taken;
+			tx.pc_next = virt_pc_select_if.pc_next;
 
 			// write to analysis port
 			analysis_port.write(tx);

@@ -26,7 +26,8 @@ class alu_operand_select_driver extends uvm_driver #(alu_operand_select_transact
 		forever begin
 			seq_item_port.get_next_item(tx);
 
-			// set the inputs of the interface from the transaction
+			// set the inputs of the interface from the
+			// transaction
 			virt_alu_operand_select_if.rs1 = tx.rs1;
 			virt_alu_operand_select_if.rs2 = tx.rs2;
 			virt_alu_operand_select_if.immediate = tx.immediate;

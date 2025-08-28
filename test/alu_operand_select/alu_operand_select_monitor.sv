@@ -28,7 +28,7 @@ class alu_operand_select_monitor extends uvm_monitor;
 
 			#1
 
-			// read the valu_operand_selectes from the virtual interface
+			// read the values from the virtual interface
 			tx.rs1 = virt_alu_operand_select_if.rs1;
 			tx.rs2 = virt_alu_operand_select_if.rs2;
 			tx.immediate = virt_alu_operand_select_if.immediate;

@@ -20,15 +20,15 @@ class alu_operand_select_scoreboard #(parameter XLEN=32) extends uvm_component;
 
 	function void write(alu_operand_select_transaction tx);
 		if (tx.alu_op1_src == 0 && tx.alu_op1 != tx.rs1)
-			`uvm_error("SCOREBOARD", $sformatf("alu_op1_src did not select rs1 with alu_op1_src = 0"))
+			`uvm_error("SCOREBOARD", "alu_op1_src = 0 but alu_op1 was not assigned rs1")
 		else if (tx.alu_op1_src == 1 && tx.alu_op1 != tx.pc)
-			`uvm_error("SCOREBOARD", $sformatf("alu_op1_src did not select pc with alu_op1_src = 1"))
+			`uvm_error("SCOREBOARD", "alu_op1_src = 1 but alu_op1 was not assigned pc")
 		else if (tx.alu_op1_src == 2 && tx.alu_op1 != 0)
-			`uvm_error("SCOREBOARD", $sformatf("alu_op1_src did not select 0 with alu_op1_src = 2"))
+			`uvm_error("SCOREBOARD", "alu_op1_src = 2 but alu_op1 was not assigned 0")
 
 		if (tx.alu_op2_src == 0 && tx.alu_op2 != tx.rs2)
-			`uvm_error("SCOREBOARD", $sformatf("alu_op2_src did not select rs2 with alu_op1_src = 0"))
+			`uvm_error("SCOREBOARD", "alu_op2_src = 0 but alu_op2 was not assigned rs2")
 		else if (tx.alu_op2_src == 1 && tx.alu_op2 != tx.immediate)
-			`uvm_error("SCOREBOARD", $sformatf("alu_op2_src did not select immediate with alu_op1_src = 1"))
+			`uvm_error("SCOREBOARD", "alu_op2_src = 1 but alu_op2 was not assigned immediate")
 	endfunction
 endclass

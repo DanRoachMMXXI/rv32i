@@ -78,6 +78,25 @@ alu:
 	# run simulation
 	$(VSIM) $(VSIM_ARGS) alu_tb_top
 
+ALU_OPERAND_SELECT_TEST_INCDIR = +incdir+./test/alu_operand_select
+alu_op_sel alu_operand_select:
+	vlib work
+
+	# uvm package
+	$(VLOG) $(UVM_INCDIR) $(UVM_SRC)/uvm_pkg.sv
+
+	# DUT and interface
+	$(VLOG) $(UVM_INCDIR) $(ALU_OPERAND_SELECT_TEST_INCDIR) src/alu_operand_select.sv test/alu_operand_select/alu_operand_select_if.sv
+
+	# ALU_OPERAND_SELECT UVM package
+	$(VLOG) $(UVM_INCDIR) $(ALU_OPERAND_SELECT_TEST_INCDIR) test/alu_operand_select/alu_operand_select_pkg.sv
+
+	# top level testbench
+	$(VLOG) $(UVM_INCDIR) $(ALU_OPERAND_SELECT_TEST_INCDIR) test/alu_operand_select/alu_operand_select_tb_top.sv
+
+	# run simulation
+	$(VSIM) $(VSIM_ARGS) alu_operand_select_tb_top
+
 BRANCH_EVALUATOR_TEST_INCDIR = +incdir+./test/branch_evaluator
 be branch_evaluator:
 	vlib work

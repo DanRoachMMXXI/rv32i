@@ -17,16 +17,13 @@ class alu_operand_select_sequence extends uvm_sequence #(alu_operand_select_tran
 			
 			// no sim license workaround
 
-			// generate random values on the inputs, all values
-			// are legal except alu_op1_src = 'b11
-			tx.rs1 = $urandom_range(0, (1 << XLEN) - 1);
-			tx.rs2 = $urandom_range(0, (1 << XLEN) - 1);
-			tx.immediate = $urandom_range(0, (1 << XLEN) - 1);
-			tx.pc = $urandom_range(0, (1 << XLEN) - 1);
-
+			tx.rs1 = $urandom_range(0, (2<<32)-1);	// TODO parameterize by XLEN
+			tx.rs2 = $urandom_range(0, (2<<32)-1);
+			tx.immediate = $urandom_range(0, (2<<32)-1);
+			tx.pc = $urandom_range(0, (2<<32)-1);
 			tx.alu_op1_src = $urandom_range(0, 2);
 			tx.alu_op2_src = $urandom_range(0, 1);
-			
+
 			finish_item(tx);	// send transaction to driver
 			#1;
 		end

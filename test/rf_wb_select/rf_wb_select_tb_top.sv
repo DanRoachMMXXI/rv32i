@@ -8,22 +8,11 @@ module rf_wb_select_tb_top;
 
 	// DUT instantiation
 	rf_wb_select #(.XLEN(32)) _rf_wb_select(
-	.instruction(virt_rf_wb_select_if.instruction),
-	.rs1(virt_rf_wb_select_if.rs1),
-	.rs2(virt_rf_wb_select_if.rs2),
-	.rd(virt_rf_wb_select_if.rd),
-	.immediate(virt_rf_wb_select_if.immediate),
-	.op1_src(virt_rf_wb_select_if.op1_src),
-	.op2_src(virt_rf_wb_select_if.op2_src),
-	.rd_select(virt_rf_wb_select_if.rd_select),
-	.alu_op(virt_rf_wb_select_if.alu_op),
-	.sign(virt_rf_wb_select_if.sign),
-	.branch(virt_rf_wb_select_if.branch),
-	.branch_if_zero(virt_rf_wb_select_if.branch_if_zero),
-	.jump(virt_rf_wb_select_if.jump),
-	.branch_base(virt_rf_wb_select_if.branch_base),
-	.rf_write_en(virt_rf_wb_select_if.rf_write_en),
-	.mem_write_en(virt_rf_wb_select_if.mem_write_en)
+        .alu_result(virt_rf_wb_select_if.alu_result),
+        .memory_data_out(virt_rf_wb_select_if.memory_data_out),
+        .pc_plus_four(virt_rf_wb_select_if.pc_plus_four),
+        .select(virt_rf_wb_select_if.select),
+        .rd(virt_rf_wb_select_if.rd)
 	);
 
 	initial begin

@@ -26,9 +26,11 @@ class rf_wb_select_driver extends uvm_driver #(rf_wb_select_transaction);
 		forever begin
 			seq_item_port.get_next_item(tx);
 
-			// set the inputs of the interface from the
-			// transaction
-			virt_rf_wb_select_if.instruction = tx.instruction;
+			// set the inputs of the interface from the transaction
+			virt_rf_wb_select_if.alu_result = tx.alu_result;
+            virt_rf_wb_select_if.memory_data_out = tx.memory_data_out;
+            virt_rf_wb_select_if.pc_plus_four = tx.pc_plus_four;
+            virt_rf_wb_select_if.select = select;
 			# 1
 
 			seq_item_port.item_done();

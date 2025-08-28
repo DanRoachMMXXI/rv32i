@@ -29,22 +29,11 @@ class rf_wb_select_monitor extends uvm_monitor;
 			#1
 
 			// read the vrf_wb_selectes from the virtual interface
-			tx.instruction = virt_rf_wb_select_if.instruction;
-			tx.rs1 = virt_rf_wb_select_if.rs1;
-			tx.rs2 = virt_rf_wb_select_if.rs2;
-			tx.rd = virt_rf_wb_select_if.rd;
-			tx.immediate = virt_rf_wb_select_if.immediate;
-			tx.op1_src = virt_rf_wb_select_if.op1_src;
-			tx.op2_src = virt_rf_wb_select_if.op2_src;
-			tx.rd_select = virt_rf_wb_select_if.rd_select;
-			tx.alu_op = virt_rf_wb_select_if.alu_op;
-			tx.sign = virt_rf_wb_select_if.sign;
-			tx.branch = virt_rf_wb_select_if.branch;
-			tx.branch_if_zero = virt_rf_wb_select_if.branch_if_zero;
-			tx.jump = virt_rf_wb_select_if.jump;
-			tx.branch_base = virt_rf_wb_select_if.branch_base;
-			tx.rf_write_en = virt_rf_wb_select_if.rf_write_en;
-			tx.mem_write_en = virt_rf_wb_select_if.mem_write_en;
+			tx.alu_result = virt_rf_wb_select_if.alu_result;
+            tx.memory_data_out = virt_rf_wb_select_if.memory_data_out;
+            tx.pc_plus_four = virt_rf_wb_select_if.pc_plus_four;
+            tx.select = virt_rf_wb_select_if.select;
+            tx.rd = virt_rf_wb_select_if.rd;
 
 			// write to analysis port
 			analysis_port.write(tx);

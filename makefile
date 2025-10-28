@@ -21,9 +21,8 @@ OBJDUMP = riscv32-unknown-elf-objdump -d
 uvm:
 	$(VLOG) $(UVM_INCDIR) $(UVM_SRC)/uvm_pkg.sv
 
-single_cycle:
+sc single_cycle:
 	verilator --binary -j 0 test/single_cycle.sv \
-		src/opcode.sv \
 		src/alu* \
 		src/branch_* \
 		src/data_memory.sv \

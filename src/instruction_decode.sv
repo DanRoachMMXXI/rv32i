@@ -1,5 +1,9 @@
-import opcode::*;
-
+/*
+ * TODO
+ * use comments to denote which opcodes correlate to which
+ * instructions/instruction types, now that the defined values from the opcodes
+ * package have been removed for synthesis.
+ */
 module immediate_decode #(parameter XLEN=32) (
 	input logic [31:0] instruction,
 	output logic [XLEN-1:0] immediate
@@ -14,11 +18,11 @@ module immediate_decode #(parameter XLEN=32) (
 	/* verilator lint_off WIDTHTRUNC */
 	always_comb
 		case (opcode)
-			I_TYPE_ALU, I_TYPE_LOAD, I_TYPE_JALR:
+			'b0010011, 'b0000011, 'b1100111:
 				immediate = {
 					{XLEN{instruction[31]}}, instruction[31:20]
 				};
-			B_TYPE:
+			'b1100011:
 				immediate = {
 					{XLEN{instruction[31]}},
 					instruction[31],
@@ -27,13 +31,13 @@ module immediate_decode #(parameter XLEN=32) (
 					instruction[11:8],
 					1'b0
 				};
-			S_TYPE:
+			'b0100011:
 				immediate = {
 					{XLEN{instruction[31]}},
 					instruction[31:25],
 					instruction[11:7]
 				};
-			JAL:		// J type
+			'b1101111:		// J type
 				immediate = {
 					{XLEN{instruction[31]}},
 					instruction[20],
@@ -42,7 +46,7 @@ module immediate_decode #(parameter XLEN=32) (
 					instruction[19:12],
 					1'b0
 				};
-			LUI, AUIPC:	// U type
+			'b0110111, 'b0010111:	// U type
 				immediate = {
 					instruction[31:12],
 					{12{1'b0}}
@@ -62,8 +66,8 @@ module branch_decode (
 	output logic branch_base
 	);
 
-	assign jump = (opcode == JAL || opcode == I_TYPE_JALR) ? 1 : 0;
-	assign branch = (opcode == B_TYPE) ? 1 : 0;
+	assign jump = (opcode == 'b1101111 || opcode == 'b1100111) ? 1 : 0;
+	assign branch = (opcode == 'b1100011) ? 1 : 0;
 	always_comb
 		case (funct3)
 			'b000,	// beq
@@ -73,7 +77,7 @@ module branch_decode (
 			default:
 				branch_if_zero = 0;
 		endcase
-	assign branch_base = (opcode == I_TYPE_JALR) ? 1 : 0;
+	assign branch_base = (opcode == 'b1100111) ? 1 : 0;
 endmodule
 
 module alu_decode (
@@ -92,7 +96,7 @@ module alu_decode (
 
 	// ALU operation and sign
 	always_comb
-		if (opcode == B_TYPE)
+		if (opcode == 'b1100011)
 			case (funct3)
 				'b000, 'b001:	// beq and bne
 				begin
@@ -119,15 +123,15 @@ module alu_decode (
 					sign = 0;
 				end
 			endcase
-		// LUI and AUIPC utilize the ALU for addition
+		// 'b0110111 and 'b0010111 utilize the ALU for addition
 		// STOREs and LOADs utilize the ALU for addition to compute
 		// the memory address
 		// STOREs and LOADs utilize funct3 to specify size: lb vs lh
 		// vs lw.  TODO implement ^, probably in a memory_decode module
-		else if (opcode == LUI
-				|| opcode == AUIPC
-				|| opcode == I_TYPE_LOAD
-				|| opcode == S_TYPE)
+		else if (opcode == 'b0110111
+				|| opcode == 'b0010111
+				|| opcode == 'b0000011
+				|| opcode == 'b0100011)
 		begin
 			alu_op = 'b000;
 			sign = 0;
@@ -135,7 +139,7 @@ module alu_decode (
 		else	// R type and I type, and other instruction types will not read this
 		begin
 			alu_op = funct3;
-			sign = (opcode == R_TYPE) ? instruction[30] : 0;	// R type specific
+			sign = (opcode == 'b0110011) ? instruction[30] : 0;	// R type specific
 		end
 
 	// ALU OP1 source
@@ -144,9 +148,9 @@ module alu_decode (
 	// In the case of lui, we can just use the ALU's adder to add 0 with the immediate
 	always_comb
 		case (opcode)
-			LUI:
+			'b0110111:
 				op1_src = 2;
-			AUIPC:
+			'b0010111:
 				op1_src = 1;
 			default:
 				op1_src = 0;
@@ -155,15 +159,15 @@ module alu_decode (
 	// ALU OP2 source
 	always_comb
 		case (opcode)
-			R_TYPE,
-			B_TYPE:
+			'b0110011,
+			'b1100011:
 				op2_src = 0;
 
-			I_TYPE_ALU,
-			I_TYPE_LOAD,
-			I_TYPE_JALR,
-			S_TYPE,
-			LUI:
+			'b0010011,
+			'b0000011,
+			'b1100111,
+			'b0100011,
+			'b0110111:
 				op2_src = 1;
 
 			default:	// ALU unused or illegal instruction
@@ -212,7 +216,7 @@ module instruction_decode #(parameter XLEN=32) (
 	output logic branch_base,	// if branch_target = base + immediate, this signal
 					// tracks what the base is
 					// 0: pc_plus_four
-					// 1: rs1 for JALR
+					// 1: rs1 for 'b1101111R
 
 	// signals to write back to register file or memory
 	output logic rf_write_en,
@@ -256,17 +260,17 @@ module instruction_decode #(parameter XLEN=32) (
 	// RF writeback source
 	always_comb
 		case (opcode)
-			R_TYPE,
-			I_TYPE_ALU,
-			LUI,
-			AUIPC:
+			'b0110011,
+			'b0010011,
+			'b0110111,
+			'b0010111:
 				rd_select = 0;
 
-			I_TYPE_LOAD:
+			'b0000011:
 				rd_select = 1;
 
-			JAL,
-			I_TYPE_JALR:
+			'b1101111,
+			'b1100111:
 				rd_select = 2;
 
 			// RF is not written by this instruction, or the
@@ -278,17 +282,17 @@ module instruction_decode #(parameter XLEN=32) (
 	// Register file and memory write enable signals
 	always_comb
 		case (opcode)
-			LUI,
-			AUIPC,
-			R_TYPE,
-			JAL,
-			I_TYPE_ALU,
-			I_TYPE_LOAD,
-			I_TYPE_JALR:
+			'b0110111,
+			'b0010111,
+			'b0110011,
+			'b1101111,
+			'b0010011,
+			'b0000011,
+			'b1100111:
 				rf_write_en = 1;
 			default:
 				rf_write_en = 0;
 		endcase
-	assign mem_write_en = (opcode == S_TYPE) ? 1 : 0;
+	assign mem_write_en = (opcode == 'b0100011) ? 1 : 0;
 
 endmodule

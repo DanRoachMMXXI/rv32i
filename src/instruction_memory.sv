@@ -2,18 +2,12 @@
  * 32-bit byte-accessible memory
  */
 module instruction_memory #(
-	parameter MEM_SIZE=4096,
+	parameter MEM_SIZE=2048,	// bytes
 	parameter MEM_FILE = "") (
 	input logic clk,
 	input logic reset,	// active low reset
 	
-	// TODO: make this safe and synthesizeable
-	// I've already tried using the width of this address as a parameter
-	// to this module, but that caused issues when computing the size of
-	// the memory by defaulting to 32 bits (range 0:0xFFFFFFFF is 0:-1)
-	//
-	// If I give up on synthesizability, I can just use $clog2
-	input logic [31:0] address,
+	input logic [$clog2(MEM_SIZE)-1:0] address,
 	input logic [31:0] data_in,
 
 	input logic [3:0] read_byte_en,		// enable each byte of the output
@@ -21,7 +15,7 @@ module instruction_memory #(
 	output logic [31:0] data_out
 	);
 
-	reg [7:0] memory [0:MEM_SIZE-1];	// 1-byte entries
+	logic [7:0] memory [0:MEM_SIZE-1];	// 1-byte entries
 	integer i;	// loop var for clearing memory on reset
 
 	always @ (posedge clk) begin

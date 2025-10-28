@@ -44,10 +44,10 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 	output logic [XLEN-1:0] evaluated_next_instruction,
 	output logic [XLEN-1:0] pc_next
 );
-	instruction_memory #(.MEM_FILE(PROGRAM)) instruction_memory (
+	instruction_memory #(.MEM_SIZE(128), .MEM_FILE(PROGRAM)) instruction_memory (
 		.clk(clk),
 		.reset(reset),
-		.address(pc),
+		.address(pc[$clog2(128)-1:0]),
 		.data_in({XLEN{1'b0}}),
 		.read_byte_en(4'b1111),	// always loading 32-bit instruction
 		.write_byte_en(4'b0000),	// not writing to imem
@@ -109,10 +109,10 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 		.result(alu_result),
 		.zero(alu_zero));
 
-	data_memory data_memory(
+	data_memory #(.MEM_SIZE(128)) data_memory(
 		.clk(clk),
 		.reset(reset),
-		.address(alu_result),
+		.address(alu_result[$clog2(128)-1:0]),
 		.data_in(rs2),
 
 		// no byte-addressing for now

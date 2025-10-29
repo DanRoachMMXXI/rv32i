@@ -169,7 +169,7 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 		.predicted_branch_predicted_taken(branch_predicted_taken),
 		.pc_next(pc_next));
 
-	register #(.N_BITS(32)) pc_register(
+	register #(.N_BITS(XLEN)) pc_register(
 		.clk(clk),
 		.reset(reset),
 		.d(pc_next),

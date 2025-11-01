@@ -11,26 +11,11 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 	output logic rf_write_en,
 	output logic mem_write_en
 );
-
-	logic [4:0] rs1_index;
-	logic [4:0] rs2_index;
-	logic [4:0] rd_index;
-
+	control_signal_bus control_signals;
 	logic [XLEN-1:0] rs1;
 	logic [XLEN-1:0] rs2;
 
 	logic [XLEN-1:0] immediate;
-
-	logic [1:0] alu_op1_src;
-	logic alu_op2_src;
-	logic [1:0] rd_select;
-
-	logic branch;
-	logic branch_if_zero;
-	logic jump;
-	logic branch_base;
-	logic branch_predicted_taken;	// this is the prediction
-	logic branch_mispredicted;	// this overwrites a misprediction
 
 	logic [XLEN-1:0] alu_op1;
 	logic [XLEN-1:0] alu_op2;
@@ -38,6 +23,9 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 	logic alu_sign;
 	logic [XLEN-1:0] alu_result;
 	logic alu_zero;
+
+	logic branch_predicted_taken;   // this is the prediction
+	logic branch_mispredicted;      // this overwrites a misprediction
 
 	logic [XLEN-1:0] memory_data_out;
 	logic [XLEN-1:0] pc_plus_four;
@@ -55,37 +43,24 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 
 	instruction_decode #(.XLEN(XLEN)) instruction_decode(
 		.instruction(instruction),
-		.rs1(rs1_index),
-		.rs2(rs2_index),
-		.rd(rd_index),
 		.immediate(immediate),
-		.op1_src(alu_op1_src),
-		.op2_src(alu_op2_src),
-		.rd_select(rd_select),
-		.alu_op(alu_operation),
-		.sign(alu_sign),
-		.branch(branch),
-		.branch_if_zero(branch_if_zero),
-		.jump(jump),
-		.branch_base(branch_base),
-		.rf_write_en(rf_write_en),
-		.mem_write_en(mem_write_en));
+		.control_signals(control_signals));
 
 	rf_wb_select #(.XLEN(XLEN)) rf_wb_select(
 		.alu_result(alu_result),
 		.memory_data_out(memory_data_out),
 		.pc_plus_four(pc_plus_four),
-		.select(rd_select),
+		.select(control_signals.rd_select),
 		.rd(rd));
 
 	register_file #(.XLEN(XLEN)) rf(
 		.clk(clk),
 		.reset(reset),
-		.rs1_index(rs1_index),
-		.rs2_index(rs2_index),
-		.rd_index(rd_index),
+		.rs1_index(control_signals.rs1_index),
+		.rs2_index(control_signals.rs2_index),
+		.rd_index(control_signals.rd_index),
 		.rd(rd),
-		.write_en(rf_write_en),
+		.write_en(control_signals.rf_write_en),
 		.rs1(rs1),
 		.rs2(rs2));
 
@@ -96,16 +71,16 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 		.rs2(rs2),
 		.immediate(immediate),
 		.pc(pc),
-		.alu_op1_src(alu_op1_src),
-		.alu_op2_src(alu_op2_src),
+		.alu_op1_src(control_signals.alu_op1_src),
+		.alu_op2_src(control_signals.alu_op2_src),
 		.alu_op1(alu_op1),
 		.alu_op2(alu_op2));
 
 	alu #(.XLEN(XLEN)) alu(
 		.a(alu_op1),
 		.b(alu_op2),
-		.op(alu_operation),
-		.sign(alu_sign),
+		.op(control_signals.alu_operation),
+		.sign(control_signals.sign),
 		.result(alu_result),
 		.zero(alu_zero));
 
@@ -121,7 +96,7 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 		.write_byte_en({4{mem_write_en}}),
 		.data_out(memory_data_out));
 
-	assign branch_target = (branch_base ? rs1 : pc_plus_four) + immediate;
+	assign branch_target = (control_signals.branch_base ? rs1 : pc_plus_four) + immediate;
 
 	// obviously the concept of branch prediction in a single cycle
 	// microarchitecture is silly, but this is where the logic that
@@ -135,8 +110,8 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 		// inputs
 		.pc_plus_four(pc_plus_four),
 		.branch_target(branch_target),
-		.jump(jump),
-		.branch(branch),
+		.jump(control_signals.jump),
+		.branch(control_signals.branch),
 		// outputs
 		.branch_predicted_taken(branch_predicted_taken));
 
@@ -153,9 +128,9 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 		.pc_plus_four(pc_plus_four),
 		.predicted_next_instruction(predicted_next_instruction),
 		.evaluated_branch_target(branch_target),
-		.jump(jump),
-		.branch(branch),
-		.branch_if_zero(branch_if_zero),
+		.jump(control_signals.jump),
+		.branch(control_signals.branch),
+		.branch_if_zero(control_signals.branch_if_zero),
 		.zero(alu_zero),
 		.branch_prediction(branch_predicted_taken),
 		// outputs
@@ -175,4 +150,8 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 		.reset(reset),
 		.d(pc_next),
 		.q(pc));
+
+	// just assign these signals to the output ports for verification
+	assign rf_write_en = control_signals.rf_write_en;
+	assign mem_write_en = control_signals.mem_write_en;
 endmodule

@@ -25,15 +25,16 @@ sc single_cycle:
 	verilator --binary -j 0 test/single_cycle.sv \
 		src/alu* \
 		src/branch_* \
-		src/read*memory.sv \
+		src/control_signal_bus.sv \
 		src/instruction_decode.sv \
 		src/pc_select.sv \
+		src/read*memory.sv \
 		src/register* \
 		src/rf_wb_select.sv \
 		src/single_cycle.sv
 
 	# maybe useful in the future when I can ditch verilator
-	# $(VLOG) src/opcode.sv
+	# $(VLOG) test/opcode.sv
 	# $(VLOG) $(SRC_INCDIR) src/alu* \
 	# 	src/branch_* \
 	# 	src/data_memory.sv \
@@ -142,7 +143,7 @@ instruction_decode id:
 	$(VLOG) $(UVM_INCDIR) $(UVM_SRC)/uvm_pkg.sv
 
 	# opcode constant package
-	$(VLOG) src/opcode.sv
+	$(VLOG) test/opcode.sv
 
 	# DUT and interface
 	$(VLOG) $(UVM_INCDIR) $(INSTRUCTION_DECODE_TEST_INCDIR) src/instruction_decode.sv test/instruction_decode/instruction_decode_if.sv

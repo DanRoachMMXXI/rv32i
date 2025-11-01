@@ -25,8 +25,8 @@ sc single_cycle:
 	verilator --binary -j 0 test/single_cycle.sv \
 		src/alu* \
 		src/branch_* \
-		src/data_memory.sv \
-		src/instruction* \
+		src/read*memory.sv \
+		src/instruction_decode.sv \
 		src/pc_select.sv \
 		src/register* \
 		src/rf_wb_select.sv \

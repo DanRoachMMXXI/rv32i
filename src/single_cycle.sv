@@ -3,54 +3,54 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 	input logic reset,
 
 	// set these signals as output for verification purposes
+	output logic [XLEN-1:0] pc,
 	output logic [31:0] instruction,
 
-	output logic [4:0] rs1_index,
-	output logic [4:0] rs2_index,
-	output logic [4:0] rd_index,
-
-	output logic [XLEN-1:0] rs1,
-	output logic [XLEN-1:0] rs2,
 	output logic [XLEN-1:0] rd,
 
-	output logic [XLEN-1:0] immediate,
-
-	output logic [1:0] alu_op1_src,
-	output logic alu_op2_src,
-	output logic [1:0] rd_select,
-
-	output logic branch,
-	output logic branch_if_zero,
-	output logic jump,
-	output logic branch_base,
-	output logic branch_predicted_taken,	// this is the prediction
-	output logic branch_mispredicted,	// this overwrites a misprediction
-
 	output logic rf_write_en,
-	output logic mem_write_en,
-
-	output logic [XLEN-1:0] alu_op1,
-	output logic [XLEN-1:0] alu_op2,
-	output logic [2:0] alu_operation,
-	output logic alu_sign,
-	output logic [XLEN-1:0] alu_result,
-	output logic alu_zero,
-
-	output logic [XLEN-1:0] memory_data_out,
-
-	output logic [XLEN-1:0] pc,
-	output logic [XLEN-1:0] pc_plus_four,
-	output logic [XLEN-1:0] branch_target,
-	output logic [XLEN-1:0] evaluated_next_instruction,
-	output logic [XLEN-1:0] pc_next
+	output logic mem_write_en
 );
-	instruction_memory #(.MEM_SIZE(128), .MEM_FILE(PROGRAM)) instruction_memory (
+
+	logic [4:0] rs1_index;
+	logic [4:0] rs2_index;
+	logic [4:0] rd_index;
+
+	logic [XLEN-1:0] rs1;
+	logic [XLEN-1:0] rs2;
+
+	logic [XLEN-1:0] immediate;
+
+	logic [1:0] alu_op1_src;
+	logic alu_op2_src;
+	logic [1:0] rd_select;
+
+	logic branch;
+	logic branch_if_zero;
+	logic jump;
+	logic branch_base;
+	logic branch_predicted_taken;	// this is the prediction
+	logic branch_mispredicted;	// this overwrites a misprediction
+
+	logic [XLEN-1:0] alu_op1;
+	logic [XLEN-1:0] alu_op2;
+	logic [2:0] alu_operation;
+	logic alu_sign;
+	logic [XLEN-1:0] alu_result;
+	logic alu_zero;
+
+	logic [XLEN-1:0] memory_data_out;
+	logic [XLEN-1:0] pc_plus_four;
+	logic [XLEN-1:0] branch_target;
+	logic [XLEN-1:0] evaluated_next_instruction;
+	logic [XLEN-1:0] pc_next;
+
+	// instruction memory
+	read_only_async_memory #(.MEM_SIZE(128), .MEM_FILE(PROGRAM)) instruction_memory (
 		.clk(clk),
 		.reset(reset),
 		.address(pc[$clog2(128)-1:0]),
-		.data_in({XLEN{1'b0}}),
 		.read_byte_en(4'b1111),	// always loading 32-bit instruction
-		.write_byte_en(4'b0000),	// not writing to imem
 		.data_out(instruction));
 
 	instruction_decode #(.XLEN(XLEN)) instruction_decode(
@@ -109,7 +109,8 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 		.result(alu_result),
 		.zero(alu_zero));
 
-	data_memory #(.MEM_SIZE(128)) data_memory(
+	// data memory
+	read_write_async_memory #(.MEM_SIZE(128)) data_memory(
 		.clk(clk),
 		.reset(reset),
 		.address(alu_result[$clog2(128)-1:0]),

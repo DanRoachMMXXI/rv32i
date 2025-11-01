@@ -1,17 +1,12 @@
-/*
- * 32-bit byte-accessible memory
- */
-module instruction_memory #(
+module read_only_async_memory #(
 	parameter MEM_SIZE=2048,	// bytes
 	parameter MEM_FILE = "") (
 	input logic clk,
 	input logic reset,	// active low reset
 	
 	input logic [$clog2(MEM_SIZE)-1:0] address,
-	input logic [31:0] data_in,
 
 	input logic [3:0] read_byte_en,		// enable each byte of the output
-	input logic [3:0] write_byte_en,	// enable each byte for writes
 	output logic [31:0] data_out
 	);
 
@@ -29,12 +24,6 @@ module instruction_memory #(
 					memory[i] = 0;
 				end
 			end
-		end else begin
-			// write bytes that are enabled
-			memory[address + 3] <= (write_byte_en[3]) ? data_in[31:24] : memory[address + 3];
-			memory[address + 2] <= (write_byte_en[2]) ? data_in[23:16] : memory[address + 2];
-			memory[address + 1] <= (write_byte_en[1]) ? data_in[15:8] : memory[address + 1];
-			memory[address + 0] <= (write_byte_en[0]) ? data_in[7:0] : memory[address + 0];
 		end
 	end
 

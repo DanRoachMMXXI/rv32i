@@ -1,5 +1,5 @@
 /*
- * 32-bit byte-accessible memory
+ * 32-bit asynchronous byte-accessible memory
  *
  * In the future, the restrictions defined in the ISA are going to need to be
  * added for the data memory
@@ -7,7 +7,7 @@
  * This doesn't throw faults on accessing address 0, byte-misaligned reads and
  * writes, and other faults the ISA might specify.
  */
-module data_memory #(
+module read_write_async_memory #(
 	parameter MEM_SIZE=4096) (
 	input logic clk,
 	input logic reset,	// active low reset

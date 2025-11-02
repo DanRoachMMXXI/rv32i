@@ -24,7 +24,8 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 	logic [XLEN-1:0] alu_result;
 	logic alu_zero;
 
-	branch_signal_bus branch_signals;
+	logic branch_predicted_taken;
+	logic branch_mispredicted;
 
 	logic [XLEN-1:0] memory_data_out;
 	logic [XLEN-1:0] pc_plus_four;
@@ -92,7 +93,7 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 
 		// no byte-addressing for now
 		.read_byte_en(4'b1111),
-		.write_byte_en({4{mem_write_en}}),
+		.write_byte_en({4{control_signals.mem_write_en}}),
 		.data_out(memory_data_out));
 
 	assign branch_target = (control_signals.branch_base ? rs1 : pc_plus_four) + immediate;
@@ -112,7 +113,7 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 		.jump(control_signals.jump),
 		.branch(control_signals.branch),
 		// outputs
-		.branch_predicted_taken(branch_signals.branch_predicted_taken));
+		.branch_predicted_taken(branch_predicted_taken));
 
 	// Does nothing in a single cycle implementation beyond being provided
 	// to the evaluator to determine whether it was mispredicted to send
@@ -120,7 +121,7 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 	// predicted next instruction.  silly in a single cycle, but will
 	// represent the logic used in a pipelined processor.
 	logic [XLEN-1:0] predicted_next_instruction;
-	assign predicted_next_instruction = branch_signals.branch_predicted_taken ? branch_target : pc_plus_four;
+	assign predicted_next_instruction = branch_predicted_taken ? branch_target : pc_plus_four;
 
 	branch_evaluator #(.XLEN(XLEN)) branch_evaluator(
 		// inputs
@@ -131,17 +132,17 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 		.branch(control_signals.branch),
 		.branch_if_zero(control_signals.branch_if_zero),
 		.zero(alu_zero),
-		.branch_prediction(branch_signals.branch_predicted_taken),
+		.branch_prediction(branch_predicted_taken),
 		// outputs
 		.next_instruction(evaluated_next_instruction),
-		.branch_mispredicted(branch_signals.branch_mispredicted));
+		.branch_mispredicted(branch_mispredicted));
 
 	pc_select #(.XLEN(XLEN)) pc_select(
 		.pc_plus_four(pc_plus_four),
 		.evaluated_next_instruction(evaluated_next_instruction),
 		.predicted_next_instruction(predicted_next_instruction),
-		.evaluated_branch_mispredicted(branch_signals.branch_mispredicted),
-		.predicted_branch_predicted_taken(branch_signals.branch_predicted_taken),
+		.evaluated_branch_mispredicted(branch_mispredicted),
+		.predicted_branch_predicted_taken(branch_predicted_taken),
 		.pc_next(pc_next));
 
 	register #(.N_BITS(XLEN)) pc_register(

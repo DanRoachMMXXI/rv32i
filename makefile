@@ -45,7 +45,7 @@ sc single_cycle:
 	# 	src/single_cycle.sv
 
 six_stage_pipeline six ssp:
-	verilator --binary -j 0 test/single_cycle.sv \
+	verilator --binary -j 0 test/six_stage_pipeline.sv \
 		src/alu* \
 		src/branch_* \
 		src/control_signal_bus.sv \

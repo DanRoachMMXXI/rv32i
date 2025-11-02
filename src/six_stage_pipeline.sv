@@ -1,35 +1,75 @@
-module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
+/*
+ * signal naming convention:
+ * signals start with two letters to designate which stage of the pipeline they
+ * belong to.  the stages are as follows:
+ * IF - Instruction Fetch
+ * ID - Instruction Decode
+ * RF - Register File
+ * EX - Execute Instruction
+ * DM - Data Memory
+ * WB - Writeback
+ */
+module six_stage_pipeline #(parameter XLEN=32, parameter PROGRAM="") (
 	input logic clk,
 	input logic reset,
 
 	// set these signals as output for verification purposes
-	output logic [XLEN-1:0] pc,
 	output logic [31:0] instruction,
 
-	output logic [XLEN-1:0] rd,
-
-	output logic rf_write_en,
-	output logic mem_write_en
+	output logic [XLEN-1:0] WB_rd
 );
-	control_signal_bus control_signals;
-	logic [XLEN-1:0] rs1;
-	logic [XLEN-1:0] rs2;
+	// need to pipeline PC up to EX stage for AUIPC
+	// argument might be made to subtract 4 from pc+4 lmao,
+	// might be less hardware than 4*XLEN DFFs
+	// also might take longer to do the XLEN bit subtraction, esp if it's
+	// a giant carry chain
+	logic [XLEN-1:0] IF_pc;
+	logic [XLEN-1:0] ID_pc;
+	logic [XLEN-1:0] RF_pc;
+	logic [XLEN-1:0] EX_pc;
 
-	logic [XLEN-1:0] immediate;
+	control_signal_bus ID_control_signals;
+	control_signal_bus RF_control_signals;
+	control_signal_bus EX_control_signals;
+	control_signal_bus DM_control_signals;
+	control_signal_bus WB_control_signals;
 
-	logic [XLEN-1:0] alu_op1;
-	logic [XLEN-1:0] alu_op2;
-	logic [2:0] alu_operation;
-	logic alu_sign;
-	logic [XLEN-1:0] alu_result;
+	logic [XLEN-1:0] RF_rs1;
+	logic [XLEN-1:0] RF_rs2;
+
+	logic [XLEN-1:0] EX_rs1;
+	logic [XLEN-1:0] EX_rs2;
+
+	logic [XLEN-1:0] ID_immediate;
+	logic [XLEN-1:0] RF_immediate;
+	logic [XLEN-1:0] EX_immediate;
+
+	logic [XLEN-1:0] EX_alu_op1;
+	logic [XLEN-1:0] EX_alu_op2;
+	logic [XLEN-1:0] EX_alu_result;
+	logic [XLEN-1:0] DM_alu_result;
+	logic [XLEN-1:0] WB_alu_result;
 	logic alu_zero;
 
-	branch_signal_bus branch_signals;
+	branch_signal_bus RF_branch_signals;
+	branch_signal_bus EX_branch_signals;
+	branch_signal_bus DM_branch_signals;
 
-	logic [XLEN-1:0] memory_data_out;
-	logic [XLEN-1:0] pc_plus_four;
-	logic [XLEN-1:0] branch_target;
-	logic [XLEN-1:0] evaluated_next_instruction;
+	logic [XLEN-1:0] DM_memory_data_out;
+	logic [XLEN-1:0] WB_memory_data_out;
+
+	logic [XLEN-1:0] IF_pc_plus_four;
+	logic [XLEN-1:0] ID_pc_plus_four;
+	logic [XLEN-1:0] RF_pc_plus_four;
+	logic [XLEN-1:0] EX_pc_plus_four;
+	logic [XLEN-1:0] DM_pc_plus_four;
+	logic [XLEN-1:0] WB_pc_plus_four;
+
+	logic [XLEN-1:0] RF_branch_target;	// where it gets computed
+	logic [XLEN-1:0] EX_branch_target;
+	logic [XLEN-1:0] DM_branch_target;	// where the branch is actually evaluated
+
+	logic [XLEN-1:0] DM_evaluated_next_instruction;
 	logic [XLEN-1:0] pc_next;
 
 	// instruction memory

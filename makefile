@@ -44,6 +44,18 @@ sc single_cycle:
 	# 	src/rf_wb_select.sv \
 	# 	src/single_cycle.sv
 
+six_stage_pipeline six ssp:
+	verilator --binary -j 0 test/single_cycle.sv \
+		src/alu* \
+		src/branch_* \
+		src/control_signal_bus.sv \
+		src/instruction_decode.sv \
+		src/pc_select.sv \
+		src/read*memory.sv \
+		src/register* \
+		src/rf_wb_select.sv \
+		src/six_stage_pipeline.sv
+
 simple-sum:
 	$(GCC) test/programs/simple-sum/simple-sum.c -o test/programs/simple-sum/simple-sum.elf
 	$(OBJCOPY) test/programs/simple-sum/simple-sum.elf test/programs/simple-sum/simple-sum.vh

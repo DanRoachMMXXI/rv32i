@@ -1,6 +1,3 @@
-// Parameterized register to be used between pipeline stages instead of
-// needing to write the same always blocks and assign each signal to the next
-// stage
 module register #(parameter N_BITS) (
 	input logic clk,
 	input logic reset,

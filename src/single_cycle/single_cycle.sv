@@ -33,6 +33,13 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 	logic [XLEN-1:0] evaluated_next_instruction;
 	logic [XLEN-1:0] pc_next;
 
+	always_ff @(posedge clk) begin: pc_register
+		if (!reset)
+			pc <= 0;
+		else // if (!stall)
+			pc <= pc_next;
+	end: pc_register
+
 	// instruction memory
 	read_only_async_memory #(.MEM_SIZE(128), .MEM_FILE(PROGRAM)) instruction_memory (
 		.clk(clk),
@@ -144,12 +151,6 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 		.evaluated_branch_mispredicted(branch_mispredicted),
 		.predicted_branch_predicted_taken(branch_predicted_taken),
 		.pc_next(pc_next));
-
-	register #(.N_BITS(XLEN)) pc_register(
-		.clk(clk),
-		.reset(reset),
-		.d(pc_next),
-		.q(pc));
 
 	// just assign these signals to the output ports for verification
 	assign rf_write_en = control_signals.rf_write_en;

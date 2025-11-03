@@ -96,12 +96,21 @@ module six_stage_pipeline #(parameter XLEN=32, parameter PROGRAM="") (
 	logic [XLEN-1:0] DM_evaluated_next_instruction;
 	logic [XLEN-1:0] pc_next;
 
+	logic stall;
+
+	always_ff @(posedge clk) begin: pc_register
+		if (!reset)
+			IF_pc <= 0;
+		else if (!stall)
+			IF_pc <= pc_next;
+	end: pc_register
+
 	always_ff @(posedge clk) begin: IF_ID_pipeline_register
-		if (!reset) begin
+		if (!reset || RF_branch_predicted_taken || DM_branch_mispredicted) begin
 			ID_pc <= 0;
 			ID_pc_plus_four <= 0;
 			ID_instruction <= 0;
-		end else begin
+		end else if (!stall) begin
 			ID_pc <= IF_pc;
 			ID_pc_plus_four <= IF_pc_plus_four;
 			ID_instruction <= IF_instruction;
@@ -109,7 +118,7 @@ module six_stage_pipeline #(parameter XLEN=32, parameter PROGRAM="") (
 	end: IF_ID_pipeline_register
 
 	always_ff @(posedge clk) begin: ID_RF_pipeline_register
-		if (!reset) begin
+		if (!reset || stall || RF_branch_predicted_taken || DM_branch_mispredicted) begin
 			RF_pc <= 0;
 			RF_pc_plus_four <= 0;
 			RF_control_signals <= 0;
@@ -123,7 +132,7 @@ module six_stage_pipeline #(parameter XLEN=32, parameter PROGRAM="") (
 	end: ID_RF_pipeline_register
 
 	always_ff @(posedge clk) begin: RF_EX_pipeline_register
-		if (!reset) begin
+		if (!reset || DM_branch_mispredicted) begin
 			EX_pc <= 0;
 			EX_pc_plus_four <= 0;
 			EX_control_signals <= 0;
@@ -147,7 +156,7 @@ module six_stage_pipeline #(parameter XLEN=32, parameter PROGRAM="") (
 	end: RF_EX_pipeline_register
 
 	always_ff @(posedge clk) begin: EX_DM_pipeline_register
-		if (!reset) begin
+		if (!reset || DM_branch_mispredicted) begin
 			DM_pc_plus_four <= 0;
 			DM_control_signals <= 0;
 			DM_branch_predicted_taken <= 0;
@@ -194,6 +203,14 @@ module six_stage_pipeline #(parameter XLEN=32, parameter PROGRAM="") (
 		.instruction(ID_instruction),
 		.immediate(ID_immediate),
 		.control_signals(ID_control_signals));
+	
+	stall_generator #(.XLEN(XLEN)) stall_generator(
+		.ID_rs1_index(ID_control_signals.rs1_index),
+		.ID_rs2_index(ID_control_signals.rs2_index),
+		.RF_rd_index(RF_control_signals.rd_index),
+		.RF_rd_select(RF_control_signals.rd_select),
+		.RF_rf_write_en(RF_control_signals.rf_write_en),
+		.stall(stall));
 
 	rf_wb_select #(.XLEN(XLEN)) rf_wb_select(
 		.alu_result(WB_alu_result),
@@ -313,12 +330,6 @@ module six_stage_pipeline #(parameter XLEN=32, parameter PROGRAM="") (
 		.evaluated_branch_mispredicted(DM_branch_mispredicted),
 		.predicted_branch_predicted_taken(RF_branch_predicted_taken),
 		.pc_next(pc_next));
-
-	register #(.N_BITS(XLEN)) pc_register(
-		.clk(clk),
-		.reset(reset),
-		.d(pc_next),
-		.q(IF_pc));
 
 	// just assign these signals to the output ports for verification
 	assign instruction = IF_instruction;

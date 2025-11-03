@@ -23,15 +23,8 @@ uvm:
 
 sc single_cycle:
 	verilator --binary -j 0 test/single_cycle.sv \
-		src/alu* \
-		src/branch_* \
-		src/control_signal_bus.sv \
-		src/instruction_decode.sv \
-		src/pc_select.sv \
-		src/read*memory.sv \
-		src/register* \
-		src/rf_wb_select.sv \
-		src/single_cycle.sv
+		src/common/* \
+		src/single_cycle/*
 
 	# maybe useful in the future when I can ditch verilator
 	# $(VLOG) test/opcode.sv
@@ -46,15 +39,8 @@ sc single_cycle:
 
 six_stage_pipeline six ssp:
 	verilator --binary -j 0 test/six_stage_pipeline.sv \
-		src/alu* \
-		src/branch_* \
-		src/control_signal_bus.sv \
-		src/instruction_decode.sv \
-		src/pc_select.sv \
-		src/read*memory.sv \
-		src/register* \
-		src/rf_wb_select.sv \
-		src/six_stage_pipeline.sv
+		src/common/* \
+		src/six_stage_pipeline/*
 
 simple-sum:
 	$(GCC) test/programs/simple-sum/simple-sum.c -o test/programs/simple-sum/simple-sum.elf

@@ -8,6 +8,13 @@
  * EX - Execute Instruction
  * DM - Data Memory
  * WB - Writeback
+ *
+ * For a while I thought I didn't need a WB stage since the output of the data
+ * memory could just be written straight to the RF instead of a pipeline
+ * register.  However, I realized that once I interface this with
+ * a synchronous memory element, there will need to be a WB stage to store the
+ * loaded value since the it won't be available until the following clock
+ * cycle.
  */
 module six_stage_pipeline #(parameter XLEN=32, parameter PROGRAM="") (
 	input logic clk,
@@ -41,10 +48,12 @@ module six_stage_pipeline #(parameter XLEN=32, parameter PROGRAM="") (
 	control_signal_bus DM_control_signals;
 	control_signal_bus WB_control_signals;
 
-	logic [XLEN-1:0] RF_rs1;
-	logic [XLEN-1:0] RF_rs2;
-
+	logic [XLEN-1:0] RF_register_file_rs1;	// the raw output of the register file
+	logic [XLEN-1:0] RF_rs1;	// rs1 after data forwarding
 	logic [XLEN-1:0] EX_rs1;
+
+	logic [XLEN-1:0] RF_register_file_rs2;	// the raw output of the register file
+	logic [XLEN-1:0] RF_rs2;	// rs2 after data forwarding
 	logic [XLEN-1:0] EX_rs2;
 	logic [XLEN-1:0] DM_rs2;	// goes into data memory
 
@@ -201,8 +210,42 @@ module six_stage_pipeline #(parameter XLEN=32, parameter PROGRAM="") (
 		.rd_index(WB_control_signals.rd_index),
 		.rd(WB_rd),
 		.write_en(WB_control_signals.rf_write_en),
-		.rs1(RF_rs1),
-		.rs2(RF_rs2));
+		.rs1(RF_register_file_rs1),
+		.rs2(RF_register_file_rs2));
+	
+	data_forwarding_unit #(.XLEN(XLEN)) rs1_data_forwarding_unit(
+		.EX_alu_result(EX_alu_result),
+		.EX_rd_select(EX_control_signals.rd_select),
+		.EX_rd_index(EX_control_signals.rd_index),
+		.EX_rf_write_en(EX_control_signals.rf_write_en),
+		.DM_alu_result(DM_alu_result),
+		.DM_memory_data_out(DM_memory_data_out),
+		.DM_rd_select(DM_control_signals.rd_select),
+		.DM_rd_index(DM_control_signals.rd_index),
+		.DM_rf_write_en(DM_control_signals.rf_write_en),
+		.WB_rd(WB_rd),
+		.WB_rd_index(WB_control_signals.rd_index),
+		.WB_rf_write_en(WB_control_signals.rf_write_en),
+		.register_file_rs(RF_register_file_rs1),
+		.register_file_rs_index(RF_control_signals.rs1_index),
+		.rs(RF_rs1));
+
+	data_forwarding_unit #(.XLEN(XLEN)) rs2_data_forwarding_unit(
+		.EX_alu_result(EX_alu_result),
+		.EX_rd_select(EX_control_signals.rd_select),
+		.EX_rd_index(EX_control_signals.rd_index),
+		.EX_rf_write_en(EX_control_signals.rf_write_en),
+		.DM_alu_result(DM_alu_result),
+		.DM_memory_data_out(DM_memory_data_out),
+		.DM_rd_select(DM_control_signals.rd_select),
+		.DM_rd_index(DM_control_signals.rd_index),
+		.DM_rf_write_en(DM_control_signals.rf_write_en),
+		.WB_rd(WB_rd),
+		.WB_rd_index(WB_control_signals.rd_index),
+		.WB_rf_write_en(WB_control_signals.rf_write_en),
+		.register_file_rs(RF_register_file_rs2),
+		.register_file_rs_index(RF_control_signals.rs2_index),
+		.rs(RF_rs2));
 
 	assign IF_pc_plus_four = IF_pc + 4;
 

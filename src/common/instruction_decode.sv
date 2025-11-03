@@ -1,9 +1,3 @@
-/*
- * TODO
- * use comments to denote which opcodes correlate to which
- * instructions/instruction types, now that the defined values from the opcodes
- * package have been removed for synthesis.
- */
 module immediate_decode #(parameter XLEN=32) (
 	input logic [31:0] instruction,
 	output logic [XLEN-1:0] immediate

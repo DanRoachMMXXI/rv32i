@@ -11,7 +11,7 @@ This project is still very much an active work in progress.  Thus far, a single 
 
 ## Less-near Future Work
 - Highly accurate branch prediction
-    - For the time being, the implemented microarchitectures are predicting branches taken if they're backwards jumps, and predicting branches not taken if they're forward jumps (as stated on Page 32 of the RISC-V Unprivileged ISA when branches are initially encountered).  The low accuracy of this method will be useful in validating how the microarchitectures handle mispredictions.  I'll be implementing prediction algorithms that maintain the history of branch instructions to improve the accuracy of these predictions.
+    - For the time being, the implemented microarchitectures are predicting branches taken if they're backwards jumps, and predicting branches not taken if they're forward jumps (as stated on Page 32 of the [RISC-V Unprivileged ISA](https://docs.riscv.org/reference/isa/_attachments/riscv-unprivileged.pdf) when branches are initially encountered).  The low accuracy of this method will be useful in validating how the microarchitectures handle mispredictions.  I'll be implementing prediction algorithms that maintain the history of branch instructions to improve the accuracy of these predictions.
 - Testing/Validation Enhancements
     - I intend to develop a test setup that enables me to track how the architectural state of the microarchitectures changes, regardless of their implementation details.
     - With this test setup, I'll also be developing a suite of C programs and the validation that tracks the architectural state changes to validate all microarchitecture implementations I create.

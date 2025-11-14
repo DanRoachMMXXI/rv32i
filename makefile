@@ -177,6 +177,12 @@ pcsel pc_select:
 reorder_buffer:
 	$(VLOG) src/reorder_buffer.sv
 
+fubuf:
+	verilator --binary -j 0 src/out_of_order/functional_unit_output_buffer.sv test/out_of_order/functional_unit_output_buffer.sv
+
+rs:
+	verilator --binary -j 0 src/out_of_order/reservation_station.sv test/out_of_order/reservation_station.sv
+
 clean:
 	rm -rf work transcript *.log *.wlf
 	rm -rf obj_dir

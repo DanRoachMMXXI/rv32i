@@ -1,105 +1,89 @@
-// TODO: need to figure out how we are going to get operand values that are
-// stored in the reorder buffer.  A problem for another day though.
 module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	input logic clk,
-	input logic reset,	// I think this will be used to flush the
-				// reservation station on mispredicts
-	input logic enable,	// enable will case the station to store a new instruction,
-				// it will NOT stop from reading the value on the CDB
+	input logic reset,
+
+	input logic enable,
+	input logic dispatched_in,	// response from FU that instruction has begun execution
+
+	/*
+	 * using terminology from Hennessy & Patterson book
+	 * q = tag, v = value
+	 */
+	input logic [TAG_WIDTH-1:0] q1_in,
+	input logic [XLEN-1:0] v1_in,
+	input logic [TAG_WIDTH-1:0] q2_in,
+	input logic [XLEN-1:0] v2_in,
+	input logic [2:0] alu_op_in,
+	input logic alu_sign_in,
 
 	input logic [TAG_WIDTH-1:0] reorder_buffer_tag_in,
-	input logic [2:0] alu_op_in,
-	input logic [TAG_WIDTH-1:0] op1_tag_in,
-	input logic [XLEN-1:0] op1_data_in,
-	input logic [TAG_WIDTH-1:0] op2_tag_in,
-	input logic [XLEN-1:0] op2_data_in,
 
-	input logic cdb_enable,		// just guessing that this signal will exist
-	input logic [TAG_WIDTH-1:0] cdb_tag,
-	input logic [XLEN-1:0] cdb_data,
+	input logic cdb_active,
+	input wire [TAG_WIDTH-1:0] cdb_tag,
+	input wire [XLEN-1:0] cdb_data,
 
-	output logic busy_out,
-
-	output logic ready,
+	output logic [TAG_WIDTH-1:0] q1_out,
+	output logic [XLEN-1:0] v1_out,
+	output logic [TAG_WIDTH-1:0] q2_out,
+	output logic [XLEN-1:0] v2_out,
+	output logic [2:0] alu_op_out,
+	output logic alu_sign_out,
 
 	output logic [TAG_WIDTH-1:0] reorder_buffer_tag_out,
-	output logic [2:0] alu_op_out,
-	output logic [XLEN-1:0] op1_data_out,
-	output logic [XLEN-1:0] op2_data_out
+
+	output logic busy,
+	output logic ready_to_execute
 	);
 
+	logic dispatched;	// FF to track that the instruction has been accepted by the FU
+
 	// signals that determine whether we need to store the value on the
-	// cdb in op1 and/or op2
+	// cdb in v1 and/or v2
 	logic read_cdb_data_op1;
 	logic read_cdb_data_op2;
 
-	// registers for all the data the reservation station stores
-	reg [TAG_WIDTH-1:0] reorder_buffer_tag;
-	reg [2:0] alu_op;
-	reg [TAG_WIDTH-1:0] op1_tag;
-	reg [XLEN-1:0] op1_data;
-	reg [TAG_WIDTH-1:0] op2_tag;
-	reg [XLEN-1:0] op2_data;
-	reg busy;
-
-	// if enable is set, we're gonna be reading the value on opN_tag_in
+	// if enable is set, we're gonna be reading the value on qN_in
 	// and see if that tag is on the CDB.  else, we're just comparing
-	// against what's already in opN_tag
-	assign read_cdb_data_op1 = ((enable ? op1_tag_in : op1_tag) == cdb_tag) && cdb_enable;
-	assign read_cdb_data_op2 = ((enable ? op2_tag_in : op2_tag) == cdb_tag) && cdb_enable;
+	// cdb_tag against what's already in qN_out
+	assign read_cdb_data_op1 = ((enable ? q1_in : q1_out) == cdb_tag) && cdb_active;
+	assign read_cdb_data_op2 = ((enable ? q2_in : q2_out) == cdb_tag) && cdb_active;
+
+	assign ready_to_execute = busy && !dispatched && q1_out == 0 && q2_out == 0;
 
 	always @(posedge clk) begin
-		// clear the contents of the buffer if active low reset
-		// previously I had also flushed if ready was set, but
-		// realized that there is not guaranteed to be an available FU
-		// to issue the instruction, so some external logic has to
-		// issue and clear the station explicitly
-		if (!reset) begin
-			reorder_buffer_tag = 0;
-			alu_op = 0;
-			op1_tag = 0;
-			op1_data = 0;
-			op2_tag = 0;
-			op2_data = 0;
-			busy = 0;
-
-		// enable is the signal that tells us to load the instruction
-		// at the station's inputs
+		// reset if signal is set or the stored ROB tag is seen on the CDB
+		if (!reset || (cdb_active && cdb_tag == reorder_buffer_tag_out)) begin
+			q1_out <= 0;
+			v1_out <= 0;
+			q2_out <= 0;
+			v2_out <= 0;
+			alu_op_out <= 0;
+			alu_sign_out <= 0;
+			reorder_buffer_tag_out <= 0;
+			busy <= 0;
+			dispatched <= 0;
 		end else begin
 			// store 0 if the tag matched the cdb tag, else store
 			// input if enable, else retain previous tag
-			op1_tag = (read_cdb_data_op1) ? 'b0 : (enable) ? op1_tag_in : op1_tag;
+			q1_out <= (read_cdb_data_op1) ? 'b0 : (enable) ? q1_in : q1_out;
 			// store cdb data if the tag matches, else store input
 			// if enable, else retain previous data value
-			op1_data = (read_cdb_data_op1) ? cdb_data : (enable) ? op1_data_in : op1_data;
+			v1_out <= (read_cdb_data_op1) ? cdb_data : (enable) ? v1_in : v1_out;
 
-			// same logic as above for op2
-			op2_tag = (read_cdb_data_op2) ? 'b0 : (enable) ? op2_tag_in : op2_tag;
-			op2_data = (read_cdb_data_op2) ? cdb_data : (enable) ? op2_data_in : op2_data;
+			// same logic as above for the second operand
+			q2_out <= (read_cdb_data_op2) ? 'b0 : (enable) ? q2_in : q2_out;
+			v2_out <= (read_cdb_data_op2) ? cdb_data : (enable) ? v2_in : v2_out;
 
-			// only update the rest of the signals if enable is set
+			dispatched <= dispatched_in;
+
+			// only update the rest of the signals if enable is set, meaning an
+			// instruction is being stored in the reservation stations
 			if (enable) begin
-				// TODO: some of these signals that aren't updated
-				// could just be put in a register from register.sv
-				// looks like render_buffer_tag and alu_op
-				reorder_buffer_tag = reorder_buffer_tag_in;
-				alu_op = alu_op_in;
-				busy = 1;
+				reorder_buffer_tag_out <= reorder_buffer_tag_in;
+				alu_op_out <= alu_op_in;
+				alu_sign_out <= alu_sign_in;
+				busy <= 1;	// busy because it has read in an instruction!
 			end
 		end
 	end
-
-	// Instruction is ready if both tags are 0 and busy is set, meaning
-	// the station is currently storing an instruction.
-	// ready_out is just the output pin for the ready signal.  The only
-	// reason I did this is because the ready signal is reused internally
-	// to flush the contents of the station once an instruction has been
-	// issued
-	assign ready = (op1_tag == 0) & (op2_tag == 0) & busy;
-
-	assign reorder_buffer_tag_out = reorder_buffer_tag;
-	assign alu_op_out = alu_op;
-	assign op1_data_out = op1_data;
-	assign op2_data_out = op2_data;
-	assign busy_out = busy;
 endmodule

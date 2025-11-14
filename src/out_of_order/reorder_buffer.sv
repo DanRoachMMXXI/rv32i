@@ -29,12 +29,24 @@
  *
  * the instructions to flush are the instructions between the index of the
  * mispredicted index and the write_to index, not inclusive.
+ * 
+ * The textbook DOES say that the buffer flushing is done when the
+ * mispredicted branch commits.  I think my assessment is still correct, but
+ * it may be a good idea to implement the simple and suboptimal solution
+ * quickly to get it done, then fuck about with more complicated
+ * optimizations.
+ * The textbook then ALSO does say in practice processors do what I described
+ * above.  Plan is probably still valid: do easy thing, then hard thing.
  *
  * It may become easier to offload the flushing of the buffer to another
  * component, and take in the signals to flush specific entries of the buffer.
  *
  * TODO: go back and make sure you understand how stores are done with reorder
  * buffers
+ * ^ done, written in Obsidian Vault, but effectively the address is computed
+ * by (what seems to be) a dedicated address calculation functional unit (as
+ * in the diagram on pg 210), then the value to be stored may be available or
+ * is otherwise read from the CDB.
  */
 
 module reorder_buffer #(
@@ -83,6 +95,8 @@ module reorder_buffer #(
 	reg [TAG_WIDTH-1:0] read_from;
 	reg [TAG_WIDTH-1:0] write_to;
 
+	// I think I could just check valid[write_to], if the entry that would
+	// be written already has something, it's full
 	assign full = &valid;
 
 	assign instruction_commit_value = rd_values[read_from];

@@ -14,6 +14,9 @@ module functional_unit_output_buffer #(parameter XLEN=32, TAG_WIDTH=32) (
 	output wire [XLEN-1:0] cdb_data,
 	output wire [TAG_WIDTH-1:0] cdb_tag,
 
+	// only have these set as outputs for debugging, after more extensive
+	// testing I'll remove them from the port list and uncomment the
+	// internal signals.  < TODO
 	output logic [1:0] read_from,
 	output logic [1:0] write_to
 	);

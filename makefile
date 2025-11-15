@@ -183,6 +183,14 @@ fubuf:
 rs:
 	verilator --binary -j 0 src/out_of_order/reservation_station.sv test/out_of_order/reservation_station.sv
 
+full_fu:
+	verilator --binary -j 0 test/out_of_order/full_fu.sv src/common/alu.sv src/out_of_order/reservation_station.sv src/out_of_order/functional_unit_output_buffer.sv src/out_of_order/alu_functional_unit.sv
+	./obj_dir/Vfull_fu
+
+cdb_arbiter:
+	verilator --binary -j 0 test/out_of_order/cdb_arbiter.sv src/out_of_order/cdb_arbiter.sv
+	./obj_dir/Vcdb_arbiter
+
 clean:
 	rm -rf work transcript *.log *.wlf
 	rm -rf obj_dir

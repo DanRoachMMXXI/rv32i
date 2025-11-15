@@ -52,6 +52,10 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 
 	always @(posedge clk) begin
 		// reset if signal is set or the stored ROB tag is seen on the CDB
+		// TODO: do I need to check dispatched here too?
+		// I don't _think_ so, because only this instruction can
+		// occupy that ROB index, so if it's seen on the CDB, it HAS
+		// to be this instruction
 		if (!reset || (cdb_active && cdb_tag == reorder_buffer_tag_out)) begin
 			q1_out <= 0;
 			v1_out <= 0;
@@ -74,7 +78,10 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 			q2_out <= (read_cdb_data_op2) ? 'b0 : (enable) ? q2_in : q2_out;
 			v2_out <= (read_cdb_data_op2) ? cdb_data : (enable) ? v2_in : v2_out;
 
-			dispatched <= dispatched_in;
+			// only update dispatched if it's clear, once it's set
+			// we don't want to clear it until the RS triggers
+			// a reset condition.
+			dispatched <= (!dispatched) ? dispatched_in : dispatched;
 
 			// only update the rest of the signals if enable is set, meaning an
 			// instruction is being stored in the reservation stations

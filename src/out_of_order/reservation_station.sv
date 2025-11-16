@@ -51,12 +51,11 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	assign ready_to_execute = busy && !dispatched && q1_out == 0 && q2_out == 0;
 
 	always @(posedge clk) begin
-		// reset if signal is set or the stored ROB tag is seen on the CDB
-		// TODO: do I need to check dispatched here too?
-		// I don't _think_ so, because only this instruction can
-		// occupy that ROB index, so if it's seen on the CDB, it HAS
-		// to be this instruction
-		if (!reset || (cdb_active && cdb_tag == reorder_buffer_tag_out)) begin
+		// this is not just the global reset signal, but should also
+		// be driven by any other logic that clears the reservation
+		// station: i.e. ROB index appears on the CDB or memory
+		// address bus
+		if (!reset) begin
 			q1_out <= 0;
 			v1_out <= 0;
 			q2_out <= 0;

@@ -13,6 +13,8 @@ module test_full_fu;
 	logic [31:0] reorder_buffer_tag_in;
 	logic cdb_permit;	// this signal would come from an arbitration system
 
+	logic rs_reset;
+
 	logic cdb_active;
 	wire [31:0] cdb_tag;
 	wire [31:0] cdb_data;
@@ -43,7 +45,7 @@ module test_full_fu;
 
 	reservation_station #(.XLEN(32), .TAG_WIDTH(32)) reservation_station (
 		.clk(clk),
-		.reset(reset),
+		.reset(rs_reset),
 		.enable(enable),
 		.dispatched_in(fu_accept),
 		.q1_in(q1_in),
@@ -65,6 +67,14 @@ module test_full_fu;
 		.reorder_buffer_tag_out(reorder_buffer_tag_out),
 		.busy(busy),
 		.ready_to_execute(ready_to_execute)
+		);
+
+	reservation_station_reset #(.TAG_WIDTH(32)) reservation_station_reset (
+		.global_reset(reset),
+		.data_bus_active(cdb_active),
+		.data_bus_tag(cdb_tag),
+		.rs_rob_tag(reorder_buffer_tag_out),
+		.reservation_station_reset(rs_reset)
 		);
 
 	alu_functional_unit #(.XLEN(32)) fu (

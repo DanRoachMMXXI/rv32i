@@ -95,9 +95,9 @@ module test_full_fu;
 		.tag(reorder_buffer_tag_out),
 		.write_en(fu_write_to_buf),
 		.not_empty(output_buf_not_empty),
-		.cdb_permit(cdb_permit),
-		.cdb_data(cdb_data),
-		.cdb_tag(cdb_tag),
+		.data_bus_permit(cdb_permit),
+		.data_bus_data(cdb_data),
+		.data_bus_tag(cdb_tag),
 		.read_from(),
 		.write_to()
 		);

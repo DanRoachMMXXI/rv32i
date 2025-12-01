@@ -6,13 +6,16 @@ module functional_unit_output_buffer #(parameter XLEN=32, TAG_WIDTH=32) (
 	input logic [TAG_WIDTH-1:0] tag,
 	input logic write_en,
 
-	output logic not_empty,	// signals to the cdb_arbiter that this buffer needs
-				// to write to the cdb.  simply valid[read_from]
+	output logic not_empty,	// signals to the data bus arbiter that this buffer needs
+				// to write to the data_bus.  simply valid[read_from]
 
-	input logic cdb_permit,	// permit access to write to the cdb,
-				// probably use to increment counter
-	output wire [XLEN-1:0] cdb_data,
-	output wire [TAG_WIDTH-1:0] cdb_tag,
+	// signals for the data bus that this functional unit is publishing
+	// data to.  this is the CDB for the ALU FU.  the memory address FU
+	// publishes to an address bus that only goes to the reorder buffer.
+	input logic data_bus_permit,	// permit access to write to the data bus,
+					// probably use to increment counter
+	output wire [XLEN-1:0] data_bus_data,
+	output wire [TAG_WIDTH-1:0] data_bus_tag,
 
 	// only have these set as outputs for debugging, after more extensive
 	// testing I'll remove them from the port list and uncomment the
@@ -31,14 +34,12 @@ module functional_unit_output_buffer #(parameter XLEN=32, TAG_WIDTH=32) (
 	assign not_empty = valid[read_from];
 
 	/*
-	 * I THINK this is right: signal from the cdb_arbiter immediately puts
-	 * the value on the CDB, and cdb_permit then changes the valid bit of
-	 * the entry that was broadcast to 0 on the next clock cycle.
-	 * I need to figure out if the cdb_arbiter is a combinational unit...
-	 * I think it is.
+	 * signal from the data bus arbiter immediately puts the value on the CDB,
+	 * and data_bus_permit then changes the valid bit of the entry that was
+	 * broadcast to 0 on the next clock cycle.
 	 */
-	assign cdb_data = cdb_permit ? values[read_from] : 'bZ;
-	assign cdb_tag = cdb_permit ? tags[read_from] : 'bZ;
+	assign data_bus_data = data_bus_permit ? values[read_from] : 'bZ;
+	assign data_bus_tag = data_bus_permit ? tags[read_from] : 'bZ;
 
 	always_ff @ (posedge clk) begin
 		if (!reset) begin
@@ -67,7 +68,7 @@ module functional_unit_output_buffer #(parameter XLEN=32, TAG_WIDTH=32) (
 				write_to <= write_to + 1;
 			end
 
-			if (cdb_permit) begin
+			if (data_bus_permit) begin
 				valid[read_from] <= 0;	// data is written, so entry in the buffer is no longer valid
 				read_from <= read_from + 1;
 			end

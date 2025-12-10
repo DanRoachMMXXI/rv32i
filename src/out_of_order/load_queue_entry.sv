@@ -4,16 +4,14 @@
  * https://github.com/riscv-boom/riscv-boom/blob/master/src/main/scala/v4/lsu/lsu.scala#L174-L194
  * but many are not needed for my implementation
  */
-interface load_buffer_entry #(parameter XLEN, parameter STQ_BUF_SIZE, parameter ROB_TAG_WIDTH);
-	logic valid;
+interface load_queue_entry #(parameter XLEN, parameter STQ_BUF_SIZE, parameter ROB_TAG_WIDTH);
+	logic valid;		// is the ENTRY valid
 	logic [XLEN-1:0] address;
-	logic address_valid;
-	logic executed;
-	logic succeeded;
-
-	// not sure what these two do
-	logic order_fail;
-	logic observed;
+	logic address_valid;	// is the ADDRESS valid
+	logic executed;		// load has been sent to memory
+	logic succeeded;	// load has obtained its data through memory, cache, or store forwarding
+	logic order_fail;	// has the searcher detected an ordering failure?
+	logic observed;		// "This load's memory effect is architecturally visible to other cores/threads" - Claude
 
 	// bitmask that holds 1s for each entry in the store queue that this
 	// load depends on.  If the data is present in the store queue, it is

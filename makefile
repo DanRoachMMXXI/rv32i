@@ -191,6 +191,9 @@ cdb_arbiter:
 	verilator --binary -j 0 test/out_of_order/cdb_arbiter.sv src/out_of_order/cdb_arbiter.sv
 	./obj_dir/Vcdb_arbiter
 
+lq load_queue:
+	verilator --binary -j 0 src/out_of_order/lsu/lsu_pkg.sv test/out_of_order/lsu/load_queue.sv src/out_of_order/lsu/load_queue.sv
+
 clean:
 	rm -rf work transcript *.log *.wlf
 	rm -rf obj_dir

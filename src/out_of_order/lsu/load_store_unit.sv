@@ -42,10 +42,11 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter L
 
 		// TODO: AGU signals
 
-		.store_masks(store_masks),
-
 		.rob_commit(rob_commit),
 		.rob_commit_type(rob_commit_type),
+
+		.set_order_fail(),
+		.order_fail_index(),
 
 		.load_queue_entries(load_queue_entries)
 		);

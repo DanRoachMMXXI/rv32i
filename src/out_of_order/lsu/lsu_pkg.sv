@@ -24,12 +24,17 @@ package lsu_pkg;
 		logic address_valid;	// is the ADDRESS valid
 		logic executed;		// load has been sent to memory
 		logic succeeded;	// load has obtained its data through memory, cache, or store forwarding
+		logic committed;	// track if this load has been committed, so that if
+					// the head has been committed, it can be freed and
+					// the head can be incremented.
 		logic order_fail;	// has the searcher detected an ordering failure?
 		// logic observed;	// "This load's memory effect is architecturally visible to other cores/threads" - Claude
 
-		// bitmask that holds 1s for each entry in the store queue that this
-		// load depends on.  If the data is present in the store queue, it is
-		// to be forwarded.
+		// bitmask of all stores that are older than this load.  this
+		// is a snapshot of the valid bits in the store queue at the
+		// time that this is dispatched.  as stores are freed in the
+		// STQ, the corresponding bits in the store masks in the LDQ
+		// need to be cleared.  < TODO
 		logic [STQ_SIZE-1:0] store_mask;
 		logic forward_stq_data;		// BOOLEAN to indicate if we are forwarding
 		logic [$clog2(STQ_SIZE)-1:0] forward_stq_index;

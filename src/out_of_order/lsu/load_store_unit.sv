@@ -1,4 +1,6 @@
-module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter LDQ_SIZE, parameter STQ_SIZE) (
+module load_store_unit
+	import lsu_pkg::*;
+	(
 	input logic clk,
 	input logic reset,
 
@@ -21,26 +23,37 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter L
 	input logic rob_commit_type,	// 0 to commit a load, 1 to commit a store, values given arbitrarily
 	// input logic [XLEN-1:0] rob_commit_address,	// which address are we committing?
 	// assuming the data is already in the STQ
+
+	input logic cdb_active,
+	input logic [XLEN-1:0] cdb_data,
+	input logic [ROB_TAG_WIDTH-1:0] cdb_tag
 	);
 
 	load_queue_entry [0:LDQ_SIZE-1] load_queue_entries;
 	store_queue_entry [0:STQ_SIZE-1] store_queue_entries;
 
-	// I am pretty sure the searcher needs to update every store_mask
-	// every cycle, because one store completing can affect multiple
-	// loads' store masks
-	// there are LDQ_SIZE packed STQ_SIZE-bit signals
-	// ex: [n_bytes-1:0][7:0] n_byte_packed_array;
-	logic [LDQ_SIZE-1:0][STQ_SIZE-1:0] store_masks;
+	logic [STQ_SIZE-1:0] store_mask;
 
-	load_queue #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE)) load_queue (
+	load_queue ldq (
 		.clk(clk),
 		.reset(reset),
 
 		.alloc_ldq_entry(alloc_ldq_entry),
 		.rob_tag_in(rob_tag_in),
 
-		// TODO: AGU signals
+		.agu_address_valid(),
+		.agu_address_data(),
+		.agu_address_rob_tag(),
+
+		.load_executed(),
+		.load_executed_rob_tag(),
+
+		.load_succeeded(),
+		.load_succeeded_rob_tag(),
+
+		.set_store_mask(),
+		.store_mask(),
+		.store_mask_index(),
 
 		.rob_commit(rob_commit),
 		.rob_commit_type(rob_commit_type),
@@ -49,26 +62,35 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter L
 		.order_fail_index(),
 
 		.load_queue_entries(load_queue_entries)
-		);
+	);
 
-	store_queue #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .STQ_SIZE(STQ_SIZE)) store_queue (
+	store_queue stq (
 		.clk(clk),
 		.reset(reset),
 
 		.alloc_stq_entry(alloc_stq_entry),
 		.rob_tag_in(rob_tag_in),
 
+		.agu_address_valid(),
+		.agu_address_data(),
+		.agu_address_rob_tag(),
+
 		.rob_commit(rob_commit),
 		.rob_commit_type(rob_commit_type),
 
-		.store_queue_entries(store_queue_entries)
-		);
+		.store_succeeded(),
+		.store_succeeded_rob_tag(),
 
-	searcher #(.XLEN(XLEN), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) searcher (
+		.cdb_active(),
+		.cdb_data(),
+		.cdb_tag(),
+
+		.store_queue_entries(store_queue_entries)
+	);
+
+	searcher searcher (
 		// assuming no clk or reset
 		.load_queue_entries(load_queue_entries),
 		.store_queue_entries(store_queue_entries)
-
-		.store_masks(store_masks),
-		);
+	);
 endmodule

@@ -1,7 +1,7 @@
 /*
  * Load store-dependence checker
  * This is a part of the "searcher" from the BOOM LSU.
- * For the load specified by ldq_store_mask_index, it reads the address and
+ * For the load specified by ldq_mem_stage_index, it reads the address and
  * store_mask from that load_queue_entry and compares it against all the
  * addresses of the store_queue_entries specified by the store_mask.  If there
  * are any matches, it kills the memory request and checks the youngest
@@ -19,7 +19,7 @@ module load_store_dep_checker
 		// away they are from the head.
 		input logic [$clog2(STQ_SIZE)-1:0] stq_head,
 
-		input logic [$clog2(LDQ_SIZE)-1:0] ldq_store_mask_index,
+		input logic [$clog2(LDQ_SIZE)-1:0] ldq_mem_stage_index,
 		// kill_mem_req is blocking the request to the memory system (the L1
 		// cache).  unlike what claude said, it WILL be set if data is being
 		// forwarded, because we are not fetching the value that's stored in
@@ -49,11 +49,11 @@ module load_store_dep_checker
 	always_comb begin
 		for (i = 0; i < STQ_SIZE; i = i + 1) begin
 			address_matches[i] = (
-				load_queue_entries[ldq_store_mask_index].store_mask[i]	// this store is older than the load
+				load_queue_entries[ldq_mem_stage_index].store_mask[i]	// this store is older than the load
 				&& store_queue_entries[i].valid	// this store is valid
 				&& store_queue_entries[i].address_valid	// store has a valid address
 				// and addresses match
-				&& store_queue_entries[i].address == load_queue_entries[ldq_store_mask_index].address
+				&& store_queue_entries[i].address == load_queue_entries[ldq_mem_stage_index].address
 			);
 		end
 

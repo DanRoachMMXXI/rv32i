@@ -191,8 +191,11 @@ cdb_arbiter:
 	verilator --binary -j 0 test/out_of_order/cdb_arbiter.sv src/out_of_order/cdb_arbiter.sv
 	./obj_dir/Vcdb_arbiter
 
-lq load_queue:
+ldq load_queue:
 	verilator --binary -j 0 src/out_of_order/lsu/lsu_pkg.sv test/out_of_order/lsu/load_queue.sv src/out_of_order/lsu/load_queue.sv
+
+stq store_queue:
+	verilator --binary -j 0 src/out_of_order/lsu/lsu_pkg.sv test/out_of_order/lsu/store_queue.sv src/out_of_order/lsu/store_queue.sv
 
 yes youngest_entry_select:
 	verilator --binary -j 0 {test,src}/out_of_order/lsu/youngest_entry_select.sv
@@ -204,6 +207,9 @@ ofd order_failure_detector:
 	verilator --binary -j 0 src/out_of_order/lsu/lsu_pkg.sv src/out_of_order/lsu/age_comparator.sv src/out_of_order/lsu/order_failure_detector.sv
 
 searcher: load_store_dep_checker order_failure_detector
+
+lsu load_store_unit:
+	verilator --binary -j 0 src/out_of_order/lsu/lsu_pkg.sv src/out_of_order/lsu/*.sv
 
 clean:
 	rm -rf work transcript *.log *.wlf

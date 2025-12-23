@@ -35,6 +35,12 @@
  */
 interface reorder_buffer_entry #(parameter XLEN);
 	logic valid;
+
+	// the ROB needs to know if a store's address is ready (as well as the
+	// data) in order to commit it.  this will be determined by reading
+	// the agu_address bus and setting this bit when this entry's ROB
+	// index appears on the bus when the bus is active.
+	logic address_ready;
 	logic [1:0] instruction_type;
 	logic [XLEN-1:0] destination;
 	logic [XLEN-1:0] value;
@@ -85,7 +91,7 @@ module reorder_buffer #(
 	// - when instructions are issued, the ROB needs to be referenced to
 	// get the value or the tag/index that it will be broadcast to the CDB
 	// with
-	output reorder_buffer_entry [0:BUF_SIZE-1] buffer
+	output reorder_buffer_entry [BUF_SIZE-1:0] buffer
 	);
 
 	integer i;	// used to reset all buffer entries

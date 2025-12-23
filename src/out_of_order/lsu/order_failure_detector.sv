@@ -17,6 +17,10 @@ module order_failure_detector
 		// away they are from the head.
 		input logic [$clog2(STQ_SIZE)-1:0] stq_head,
 
+		// stq_commit: boolean
+		// 1: this store index actually committed
+		// 0: the value is just junk (probably 0 by default)
+		input logic stq_commit,
 		input logic [$clog2(STQ_SIZE)-1:0] stq_commit_index,
 		output logic [LDQ_SIZE-1:0] order_failures
 	);
@@ -48,7 +52,8 @@ module order_failure_detector
 			// While it's not stated so in the BOOM documentation,
 			// I assume we need to check the store mask to know if
 			// a load is dependent on this store.
-			order_failures[i] = (load_queue_entries[i].valid	// is the load valid?
+			order_failures[i] = (stq_commit	// has this store index actually committed?
+				&& load_queue_entries[i].valid	// is the load valid?
 				&& load_queue_entries[i].succeeded		// has the load acquired and broadcast data?
 				&& load_queue_entries[i].store_mask[stq_commit_index]	// is the load younger than the committing store?
 				// did the load acquire data from the same address?

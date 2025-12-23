@@ -22,10 +22,12 @@ module test_load_queue;
 	logic				rob_commit;
 	logic [ROB_TAG_WIDTH-1:0]	rob_commit_tag;
 	logic [LDQ_SIZE-1:0]		order_failures;
+	logic				stq_entry_fired;
+	logic [3:0]			stq_entry_fired_index;
 
 	load_queue_entry [15:0]		load_queue_entries;
 
-	load_queue /* #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) */ ldq (
+	load_queue ldq (
 		.clk(clk),
 		.reset(reset),
 		.alloc_ldq_entry(alloc_ldq_entry),
@@ -41,6 +43,8 @@ module test_load_queue;
 		.rob_commit(rob_commit),
 		.rob_commit_tag(rob_commit_tag),
 		.order_failures(order_failures),
+		.stq_entry_fired(stq_entry_fired),
+		.stq_entry_fired_index(stq_entry_fired_index),
 		.load_queue_entries(load_queue_entries),
 		.head(),
 		.tail(),
@@ -63,12 +67,16 @@ module test_load_queue;
 
 		alloc_ldq_entry = 1;
 		rob_tag_in = 19;
+		store_mask = 'hCAFE;
 		# 10
-		// The first LDQ entry has been allocated.
+		// The first LDQ entry has been allocated and the store mask
+		// has been set.
 		assert(load_queue_entries[0].valid == 1);
+		assert(load_queue_entries[0].store_mask == 'hCAFE);
 
 		alloc_ldq_entry = 0;
 		rob_tag_in = 0;
+		store_mask = 0;
 		agu_address_valid = 1;
 		agu_address_data = 42;
 		# 10
@@ -91,6 +99,21 @@ module test_load_queue;
 		agu_address_rob_tag = 0;
 		agu_address_data = 0;
 
+		// testing clearing bits in the store mask
+		stq_entry_fired = 1;
+		stq_entry_fired_index = 7;
+		# 10
+		assert(load_queue_entries[0].store_mask == 'hCA7E);
+
+		stq_entry_fired_index = 1;
+		# 10
+		assert(load_queue_entries[0].store_mask == 'hCA7C);
+
+		stq_entry_fired_index = 9;
+		# 10
+		assert(load_queue_entries[0].store_mask == 'hC87C);
+
+		stq_entry_fired = 0;
 		load_executed = 1;
 		load_executed_rob_tag = 19;
 		# 10
@@ -118,6 +141,17 @@ module test_load_queue;
 		// The next cycle, since the head of the buffer has been
 		// committed, we should see the entry be cleared
 		assert(load_queue_entries[0].valid == 0);
+
+		// Test storing order failure bits.  The load queue doesn't
+		// actually do anything with these, some other combinational
+		// component will raise the exception and flush.
+		order_failures = 'h1337;	// a bit unrealistic of a mask, but works for test
+		# 10
+		assert(load_queue_entries[0].order_fail);
+		assert(load_queue_entries[1].order_fail);
+		assert(load_queue_entries[2].order_fail);
+		assert(load_queue_entries[9].order_fail);
+		assert(load_queue_entries[12].order_fail);
 
 		/*
 		 * this test is by no means comprehensive, nor even complete

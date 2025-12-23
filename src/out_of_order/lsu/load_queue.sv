@@ -17,10 +17,13 @@
  *	- cancel the fired load operation
  *	- forward the data if it's available in the store buffer
  *	- sleep until the data is available if it isn't already available
+ *
+ * - TODO: clear bits of the store_mask when they are fired to memory and
+ *   leave the STQ
+ * - TODO: track when loads are sleeping and figure out how to wake them
  */
 module load_queue 
-	import lsu_pkg::*;
-	/* #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ_SIZE=16, parameter STQ_SIZE=16) */ (
+	import lsu_pkg::*; (
 	input logic clk,
 	input logic reset,
 
@@ -58,6 +61,11 @@ module load_queue
 	// multiple loads may have their order failures set at once, if they
 	// all loaded before the committing store
 	input logic [LDQ_SIZE-1:0] order_failures,
+
+	// need to see when a STQ entry fires to memory so we can clear that
+	// bit of all store_masks
+	input logic stq_entry_fired,
+	input logic [$clog2(STQ_SIZE)-1:0] stq_entry_fired_index,
 
 	// circular buffer pointers
 	output load_queue_entry [LDQ_SIZE-1:0] load_queue_entries,
@@ -105,7 +113,7 @@ module load_queue
 			//	either case, a memory ordering failure has
 			//	occurred."
 			//	- needs to be able to update all or multiple
-			//	entries in one cycle
+			//	entries in one cycle (DONE)
 			// - forward_stq_data
 			// - forward_stq_index
 
@@ -146,6 +154,12 @@ module load_queue
 
 				// set the order fail bit of this entry if it was detected by the searcher
 				load_queue_entries[i].order_fail <= load_queue_entries[i].order_fail | order_failures[i];
+
+				// if a store is being fired, we must clear
+				// that bit in all store_masks
+				if (stq_entry_fired) begin
+					load_queue_entries[i].store_mask[stq_entry_fired_index] <= 1'b0;
+				end
 			end
 		end
 	end

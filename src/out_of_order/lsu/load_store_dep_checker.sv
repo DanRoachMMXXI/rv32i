@@ -2,31 +2,35 @@
  * Load store-dependence checker
  * This is a part of the "searcher" from the BOOM LSU.
  * For the load specified by ldq_mem_stage_index, it reads the address and
- * store_mask from that load_queue_entry and compares it against all the
- * addresses of the store_queue_entries specified by the store_mask.  If there
+ * store_mask from that load queue entry and compares it against all the
+ * addresses of the store queue entries specified by the store_mask.  If there
  * are any matches, it kills the memory request and checks the youngest
  * matching store to see if the data is ready for forwarding.  If so, the
  * signals to forward the data are set, otherwise the load is just killed and
  * put to sleep.
  */
-module load_store_dep_checker
-	import lsu_pkg::*; (
-		input load_queue_entry [LDQ_SIZE-1:0] load_queue_entries,
-		input store_queue_entry [STQ_SIZE-1:0] store_queue_entries,
+module load_store_dep_checker #(parameter XLEN=32, parameter LDQ_SIZE=32, parameter STQ_SIZE=32) (
+	input logic [LDQ_SIZE-1:0][XLEN-1:0]		ldq_address,
+	input logic [LDQ_SIZE-1:0][STQ_SIZE-1:0]	ldq_store_mask,
 
-		// putting these here as I think we are going to need these to
-		// compare the age of different stores by computing how far
-		// away they are from the head.
-		input logic [$clog2(STQ_SIZE)-1:0] stq_head,
+	input logic [STQ_SIZE-1:0] stq_valid,		// is the ENTRY valid
+	input logic [STQ_SIZE-1:0] [XLEN-1:0] stq_address,
+	input logic [STQ_SIZE-1:0] stq_address_valid,
+	input logic [STQ_SIZE-1:0] stq_data_valid,	// is the data for the store present in the entry?
 
-		input logic [$clog2(LDQ_SIZE)-1:0] ldq_mem_stage_index,
-		// kill_mem_req is blocking the request to the memory system (the L1
-		// cache).  unlike what claude said, it WILL be set if data is being
-		// forwarded, because we are not fetching the value that's stored in
-		// memory.
-		output logic kill_mem_req,
-		output logic forward,	// bool, true if forwarding data
-		output logic [$clog2(STQ_SIZE)-1:0] stq_forward_index	// index of forwarded data
+	// putting these here as I think we are going to need these to
+	// compare the age of different stores by computing how far
+	// away they are from the head.
+	input logic [$clog2(STQ_SIZE)-1:0] stq_head,
+
+	input logic [$clog2(LDQ_SIZE)-1:0] ldq_mem_stage_index,
+	// kill_mem_req is blocking the request to the memory system (the L1
+	// cache).  unlike what claude said, it WILL be set if data is being
+	// forwarded, because we are not fetching the value that's stored in
+	// memory.
+	output logic kill_mem_req,
+	output logic forward,	// bool, true if forwarding data
+	output logic [$clog2(STQ_SIZE)-1:0] stq_forward_index	// index of forwarded data
 	);
 
 	logic [STQ_SIZE-1:0] address_matches;
@@ -49,11 +53,11 @@ module load_store_dep_checker
 	always_comb begin
 		for (i = 0; i < STQ_SIZE; i = i + 1) begin
 			address_matches[i] = (
-				load_queue_entries[ldq_mem_stage_index].store_mask[i]	// this store is older than the load
-				&& store_queue_entries[i].valid	// this store is valid
-				&& store_queue_entries[i].address_valid	// store has a valid address
+				ldq_store_mask[ldq_mem_stage_index][i]	// this store is older than the load
+				&& stq_valid[i]	// this store is valid
+				&& stq_address_valid[i]	// store has a valid address
 				// and addresses match
-				&& store_queue_entries[i].address == load_queue_entries[ldq_mem_stage_index].address
+				&& stq_address[i] == ldq_address[ldq_mem_stage_index]
 			);
 		end
 
@@ -64,7 +68,7 @@ module load_store_dep_checker
 
 		// youngest_matching_store_index is only valid if any of the
 		// addresses match, represented by kill_mem_req
-		if (kill_mem_req && store_queue_entries[youngest_matching_store_index].data_valid) begin
+		if (kill_mem_req && stq_data_valid[youngest_matching_store_index]) begin
 			forward = 1;
 			stq_forward_index = youngest_matching_store_index;
 		end else begin

@@ -11,9 +11,7 @@
  *   agu_address_valid = 1 it will set an address_ready status bit at the
  *   ROB index of the tag
  */
-module store_queue
-	import lsu_pkg::*;
-	(
+module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter STQ_SIZE=32) (
 	input logic clk,
 	input logic reset,
 
@@ -37,7 +35,14 @@ module store_queue
 	input logic [XLEN-1:0] cdb_data,
 	input logic [ROB_TAG_WIDTH-1:0] cdb_tag,
 	
-	output store_queue_entry [STQ_SIZE-1:0] store_queue_entries,
+	output logic [STQ_SIZE-1:0] stq_valid,		// is the ENTRY valid
+	output logic [STQ_SIZE-1:0] [XLEN-1:0] stq_address,
+	output logic [STQ_SIZE-1:0] stq_address_valid,
+	output logic [STQ_SIZE-1:0] [XLEN-1:0] stq_data,
+	output logic [STQ_SIZE-1:0] stq_data_valid,	// is the data for the store present in the entry?
+	output logic [STQ_SIZE-1:0] stq_committed,
+	output logic [STQ_SIZE-1:0] stq_succeeded,
+	output logic [STQ_SIZE-1:0] [ROB_TAG_WIDTH-1:0] stq_rob_tag,
 
 	// circular buffer pointers
 	output logic [$clog2(STQ_SIZE)-1:0] head,
@@ -60,50 +65,42 @@ module store_queue
 		end else begin
 			// place a new store instruction in the store buffer
 			if (alloc_stq_entry) begin
-				store_queue_entries[tail].valid <= 1;
-				store_queue_entries[tail].rob_tag <= rob_tag_in;
+				stq_valid[tail] <= 1;
+				stq_rob_tag[tail] <= rob_tag_in;
 
 				// if the data to store is already available,
 				// store it in the queue
 				// no need for a conditional since data_valid
 				// will reflect if the data was avilable
-				store_queue_entries[tail].data <= store_data_in;
-				store_queue_entries[tail].data_valid <= store_data_in_valid;
+				stq_data[tail] <= store_data_in;
+				stq_data_valid[tail] <= store_data_in_valid;
 
 				tail <= tail + 1;
 			end
 
 			for (i = 0; i < STQ_SIZE; i = i + 1) begin
-				if (store_queue_entries[i].valid
-						&& agu_address_valid
-						&& agu_address_rob_tag == store_queue_entries[i].rob_tag) begin
-					store_queue_entries[i].address <= agu_address_data;
-					store_queue_entries[i].address_valid <= 1;
+				if (stq_valid[i] && agu_address_valid && agu_address_rob_tag == stq_rob_tag[i]) begin
+					stq_address[i] <= agu_address_data;
+					stq_address_valid[i] <= 1;
 				end
 
-				if (store_queue_entries[i].valid
-						&& cdb_active
-						&& cdb_tag == store_queue_entries[i].rob_tag) begin
-					store_queue_entries[i].data <= cdb_data;
-					store_queue_entries[i].data_valid <= 1;
+				if (stq_valid[i] && cdb_active && cdb_tag == stq_rob_tag[i]) begin
+					stq_data[i] <= cdb_data;
+					stq_data_valid[i] <= 1;
 				end
 
-				if (store_queue_entries[i].valid
-						&& rob_commit
-						&& rob_commit_tag == store_queue_entries[i].rob_tag) begin
-					store_queue_entries[i].committed <= 1;
+				if (stq_valid[i] && rob_commit && rob_commit_tag == stq_rob_tag[i]) begin
+					stq_committed[i] <= 1;
 				end
 
-				if (store_queue_entries[i].valid
-						&& store_succeeded
-						&& store_succeeded_rob_tag == store_queue_entries[i].rob_tag) begin
-					store_queue_entries[i].succeeded <= 1;
+				if (stq_valid[i] && store_succeeded && store_succeeded_rob_tag == stq_rob_tag[i]) begin
+					stq_succeeded[i] <= 1;
 				end
 
 				// if the entry at the head of the queue is
 				// succeeded, clear it and increment the head
 				// pointer
-				if (store_queue_entries[i].valid && store_queue_entries[i].succeeded) begin
+				if (stq_valid[i] && stq_succeeded[i]) begin
 					clear_entry(i);
 					head <= head + 1;
 				end
@@ -114,16 +111,16 @@ module store_queue
 	// Since the tail pointer points to the next available entry in the
 	// buffer, if that entry has the valid bit set, there are no more
 	// available entries and the buffer is full.
-	assign full = store_queue_entries[tail].valid;
+	assign full = stq_valid[tail];
 
 	function void clear_entry (integer index);
-		store_queue_entries[index].valid <= 0;
-		store_queue_entries[index].address <= 0;
-		store_queue_entries[index].address_valid <= 0;
-		store_queue_entries[index].data <= 0;
-		store_queue_entries[index].data_valid <= 0;
-		store_queue_entries[index].committed <= 0;
-		store_queue_entries[index].succeeded <= 0;
-		store_queue_entries[index].rob_tag <= 0;
+		stq_valid[index] <= 0;
+		stq_address[index] <= 0;
+		stq_address_valid[index] <= 0;
+		stq_data[index] <= 0;
+		stq_data_valid[index] <= 0;
+		stq_committed[index] <= 0;
+		stq_succeeded[index] <= 0;
+		stq_rob_tag[index] <= 0;
 	endfunction
 endmodule

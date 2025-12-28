@@ -1,6 +1,4 @@
-module load_store_unit
-	import lsu_pkg::*;
-	(
+module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ_SIZE=32, parameter STQ_SIZE=32) (
 	input logic clk,
 	input logic reset,
 
@@ -29,6 +27,18 @@ module load_store_unit
 	// not taking the data from the ROB for stores cause I am
 	// assuming the data is already in the store queue
 
+	// these signals are what I AM ASSUMING come from memory to indicate
+	// a load succeeded.  something needs to tell the load queue that
+	// the load has succeeded so it can remove the entry from the queue.
+	input logic load_succeeded,
+	input logic [ROB_TAG_WIDTH-1:0] load_succeeded_rob_tag,
+
+	// these signals are what I AM ASSUMING come from memory to indicate
+	// a store succeeded.  something needs to tell the store queue that
+	// the store has succeeded so it can remove the entry from the queue.
+	input logic store_succeeded,
+	input logic [ROB_TAG_WIDTH-1:0] store_succeeded_rob_tag,
+
 	input logic cdb_active,
 	input logic [XLEN-1:0] cdb_data,
 	input logic [ROB_TAG_WIDTH-1:0] cdb_tag,
@@ -39,59 +49,118 @@ module load_store_unit
 	output logic kill_mem_req
 	);
 
-	load_queue_entry [LDQ_SIZE-1:0] load_queue_entries;
-	store_queue_entry [STQ_SIZE-1:0] store_queue_entries;
+	// load queue buffer signals
+	logic [LDQ_SIZE-1:0]				ldq_valid;
+	logic [LDQ_SIZE-1:0][XLEN-1:0]			ldq_address;
+	logic [LDQ_SIZE-1:0]				ldq_address_valid;
+	logic [LDQ_SIZE-1:0]				ldq_executed;
+	logic [LDQ_SIZE-1:0]				ldq_succeeded;
+	logic [LDQ_SIZE-1:0]				ldq_committed;
+	logic [LDQ_SIZE-1:0]				ldq_order_fail;
+	logic [LDQ_SIZE-1:0][STQ_SIZE-1:0]		ldq_store_mask;
+	logic [LDQ_SIZE-1:0]				ldq_forward_stq_data;
+	logic [LDQ_SIZE-1:0][$clog2(STQ_SIZE)-1:0]	ldq_forward_stq_index;
+	logic [LDQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]		ldq_rob_tag;
+
+	// store queue buffer signals
+	logic [STQ_SIZE-1:0] stq_valid;		// is the ENTRY valid
+	logic [STQ_SIZE-1:0] [XLEN-1:0] stq_address;
+	logic [STQ_SIZE-1:0] stq_address_valid;
+	logic [STQ_SIZE-1:0] [XLEN-1:0] stq_data;
+	logic [STQ_SIZE-1:0] stq_data_valid;	// is the data for the store present in the entry?
+	logic [STQ_SIZE-1:0] stq_committed;
+	logic [STQ_SIZE-1:0] stq_succeeded;
+	logic [STQ_SIZE-1:0] [ROB_TAG_WIDTH-1:0] stq_rob_tag;
 
 	logic [$clog2(LDQ_SIZE)-1:0] ldq_head;
 	logic [$clog2(STQ_SIZE)-1:0] stq_head;
 
+	// ldq_full - is the load queue full?
+	// produced by: load_queue
+	// consumed by: output
 	logic ldq_full;
+
+	// stq_full - is the store queue full?
+	// produced by: store_queue
+	// consumed by: lsu_control, output
 	logic stq_full;
 
-	logic [STQ_SIZE-1:0] store_mask;
+	// load_executed - is a load entering execution this clock cycle?
+	// produced by: lsu_control
+	// consumed by: load_queue
+	logic load_executed;
 
+	// ldq_mem_stage_index - LDQ index of the load being executed this cycle
+	// produced by: lsu_control
+	// consumed by: load_queue, load_store_dep_checker
 	logic [$clog2(LDQ_SIZE)-1:0] ldq_mem_stage_index;
 
+	// order_failures - bitmask of load queue entries that have
+	// experienced an ordering failure with respect to the store that
+	// committed (TODO when?)
+	// produced by: order_failure_detector
+	// consumed by: load_queue
+	// TODO: this will need to store an exception in the ROB
 	logic [LDQ_SIZE-1:0] order_failures;
 
+	// forward - is the data for the currently executing load being
+	// forwarded from the store queue?
+	// produced by: load_store_dep_checker
+	// consumed by: load_queue
 	logic forward;
 	logic [$clog2(STQ_SIZE)-1:0] stq_forward_index;
 
-	load_queue ldq (
+	// stq_entry_fired - did the store queue just fire a store to memory?
+	// needed to clear bits in the store mask
+	// produced by: TODO ???
+	// consumed by: load_queue
+	logic stq_entry_fired;
+	logic [$clog2(STQ_SIZE)-1:0] stq_entry_fired_index;
+
+	load_queue #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) ldq (
 		.clk(clk),
 		.reset(reset),
 
 		.alloc_ldq_entry(alloc_ldq_entry),
 		.rob_tag_in(rob_tag_in),
-		.store_mask(store_mask),
+		.store_mask(stq_valid),
 
 		.agu_address_valid(agu_address_valid),
 		.agu_address_data(agu_address_data),
 		.agu_address_rob_tag(agu_address_rob_tag),
 
-		// I think this will come from the control logic inside the LSU
-		.load_executed(),
-		// TODO: get rid of this and use the ldq_mem_stage_index
-		// selected by the control logic, that is the load being
-		// executed.
-		.load_executed_rob_tag(),
+		.load_executed(load_executed),
+		.load_executed_index(ldq_mem_stage_index),
 
-		// I think this will come from the memory unit outside the LSU
-		.load_succeeded(),
-		.load_succeeded_rob_tag(),
+		.load_succeeded(load_succeeded),
+		.load_succeeded_rob_tag(load_succeeded_rob_tag),
 
 		.rob_commit(rob_commit),
 		.rob_commit_tag(rob_commit_tag),
 
 		.order_failures(order_failures),
 
-		.load_queue_entries(load_queue_entries),
+		.stq_entry_fired(stq_entry_fired),
+		.stq_entry_fired_index(stq_entry_fired_index),
+
+		.ldq_valid(ldq_valid),
+		.ldq_address(ldq_address),
+		.ldq_address_valid(ldq_address_valid),
+		.ldq_executed(ldq_executed),
+		.ldq_succeeded(ldq_succeeded),
+		.ldq_committed(ldq_committed),
+		.ldq_order_fail(ldq_order_fail),
+		.ldq_store_mask(ldq_store_mask),
+		.ldq_forward_stq_data(ldq_forward_stq_data),
+		.ldq_forward_stq_index(ldq_forward_stq_index),
+		.ldq_rob_tag(ldq_rob_tag),
+
 		.head(ldq_head),
 		.tail(),
 		.full(ldq_full)
 	);
 
-	store_queue stq (
+	store_queue #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .STQ_SIZE(STQ_SIZE)) stq (
 		.clk(clk),
 		.reset(reset),
 
@@ -107,24 +176,36 @@ module load_store_unit
 		.rob_commit(rob_commit),
 		.rob_commit_tag(rob_commit_tag),
 
-		// I think this will come from the memory unit outside the LSU
-		.store_succeeded(),
-		.store_succeeded_rob_tag(),
+		.store_succeeded(store_succeeded),
+		.store_succeeded_rob_tag(store_succeeded_rob_tag),
 
 		.cdb_active(cdb_active),
 		.cdb_data(cdb_data),
 		.cdb_tag(cdb_tag),
 
-		.store_queue_entries(store_queue_entries),
+		.stq_valid(stq_valid),
+		.stq_address(stq_address),
+		.stq_address_valid(stq_address_valid),
+		.stq_data(stq_data),
+		.stq_data_valid(stq_data_valid),
+		.stq_committed(stq_committed),
+		.stq_succeeded(stq_succeeded),
+		.stq_rob_tag(stq_rob_tag),
+
 		.head(stq_head),
 		.tail(),
 		.full(stq_full)
 	);
 
 	// combinational component
-	load_store_dep_checker lsdc (
-		.load_queue_entries(load_queue_entries),
-		.store_queue_entries(store_queue_entries),
+	load_store_dep_checker #(.XLEN(XLEN), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) lsdc (
+		.ldq_address(ldq_address),
+		.ldq_store_mask(ldq_store_mask),
+		.stq_valid(stq_valid),
+		.stq_address(stq_address),
+		.stq_address_valid(stq_address_valid),
+		.stq_data_valid(stq_data_valid),
+
 		.stq_head(stq_head),
 		// I think this comes from control logic
 		.ldq_mem_stage_index(ldq_mem_stage_index),
@@ -136,9 +217,18 @@ module load_store_unit
 	);
 
 	// combinational component
-	order_failure_detector ofd (
-		.load_queue_entries(load_queue_entries),
-		.store_queue_entries(store_queue_entries),
+	order_failure_detector #(.XLEN(XLEN), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) ofd (
+		// load queue signals
+		.ldq_valid(ldq_valid),
+		.ldq_address(ldq_address),
+		.ldq_succeeded(ldq_succeeded),
+		.ldq_store_mask(ldq_store_mask),
+		.ldq_forward_stq_data(ldq_forward_stq_data),
+		.ldq_forward_stq_index(ldq_forward_stq_index),
+
+		// store queue signals
+		.stq_address(stq_address),
+
 		.stq_head(stq_head),
 		// comes from control logic, finds the index of the most
 		// recently committed store (should just be head?)
@@ -147,5 +237,31 @@ module load_store_unit
 
 		// output
 		.order_failures(order_failures)
+	);
+
+	lsu_control #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) control (
+		// load queue signals
+		.ldq_valid(ldq_valid),
+		.ldq_address_valid(ldq_address_valid),
+		.ldq_executed(ldq_executed),
+
+		// store queue signals
+		.stq_valid(stq_valid),
+		.stq_committed(stq_committed),
+
+		// buffer pointers
+		.ldq_head(ldq_head),
+		.stq_head(stq_head),
+
+		.stq_full(stq_full),
+
+		// outputs
+		.fire_memory_op(),
+		.memory_op_type(),
+		.memory_address(),
+		.memory_data(),
+
+		.load_executed(load_executed),
+		.ldq_mem_stage_index(ldq_mem_stage_index)
 	);
 endmodule

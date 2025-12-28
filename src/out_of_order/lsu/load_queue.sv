@@ -22,8 +22,7 @@
  *   leave the STQ
  * - TODO: track when loads are sleeping and figure out how to wake them
  */
-module load_queue 
-	import lsu_pkg::*; (
+module load_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ_SIZE=32, parameter STQ_SIZE=32) (
 	input logic clk,
 	input logic reset,
 
@@ -45,7 +44,7 @@ module load_queue
 
 	// signals to indicate a load has been fired
 	input logic load_executed,
-	input logic [ROB_TAG_WIDTH-1:0] load_executed_rob_tag,
+	input logic [$clog2(LDQ_SIZE)-1:0] load_executed_index,
 
 	// signals from the memory interface to designate a succeeded load
 	// the load_succeeded_rob_tag is tracked by cache miss registers in
@@ -67,8 +66,20 @@ module load_queue
 	input logic stq_entry_fired,
 	input logic [$clog2(STQ_SIZE)-1:0] stq_entry_fired_index,
 
+	// output load_queue_entry [LDQ_SIZE-1:0] load_queue_entries,
+	output logic [LDQ_SIZE-1:0]				ldq_valid,
+	output logic [LDQ_SIZE-1:0][XLEN-1:0]			ldq_address,
+	output logic [LDQ_SIZE-1:0]				ldq_address_valid,
+	output logic [LDQ_SIZE-1:0]				ldq_executed,
+	output logic [LDQ_SIZE-1:0]				ldq_succeeded,
+	output logic [LDQ_SIZE-1:0]				ldq_committed,
+	output logic [LDQ_SIZE-1:0]				ldq_order_fail,
+	output logic [LDQ_SIZE-1:0][STQ_SIZE-1:0]		ldq_store_mask,
+	output logic [LDQ_SIZE-1:0]				ldq_forward_stq_data,
+	output logic [LDQ_SIZE-1:0][$clog2(STQ_SIZE)-1:0]	ldq_forward_stq_index,
+	output logic [LDQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]		ldq_rob_tag,
+
 	// circular buffer pointers
-	output load_queue_entry [LDQ_SIZE-1:0] load_queue_entries,
 	output logic [$clog2(LDQ_SIZE)-1:0] head,
 	output logic [$clog2(LDQ_SIZE)-1:0] tail,
 
@@ -90,14 +101,18 @@ module load_queue
 		end else begin
 			// place a new load instruction in the load buffer
 			if (alloc_ldq_entry) begin
-				load_queue_entries[tail].valid <= 1;
-				load_queue_entries[tail].rob_tag <= rob_tag_in;
-				load_queue_entries[tail].store_mask <= store_mask;
+				ldq_valid[tail] <= 1;
+				ldq_rob_tag[tail] <= rob_tag_in;
+				ldq_store_mask[tail] <= store_mask;
 				tail <= tail + 1;
 			end
 
+			if (ldq_valid[load_executed_index] && load_executed) begin
+				ldq_executed[load_executed_index] <= 1;
+			end
+
 			// if the entry at the head is committed, free it and increment head
-			if (load_queue_entries[head].committed) begin
+			if (ldq_committed[head]) begin
 				clear_entry(int'(head));
 				head <= head + 1;
 			end
@@ -121,18 +136,14 @@ module load_queue
 			for (i = 0; i < LDQ_SIZE; i = i + 1) begin	// each entry in the buffer makes this comparison
 				// READ ADDRESS FROM THE AGU
 				// if the address from the AGU is to be read and the ROB tag matches
-				if (load_queue_entries[i].valid && agu_address_valid && agu_address_rob_tag == load_queue_entries[i].rob_tag) begin
+				if (ldq_valid[i] && agu_address_valid && agu_address_rob_tag == ldq_rob_tag[i]) begin
 					// if match, update address and declare it to be valid
-					load_queue_entries[i].address <= agu_address_data;
-					load_queue_entries[i].address_valid <= 1;
+					ldq_address[i] <= agu_address_data;
+					ldq_address_valid[i] <= 1;
 				end
 
-				if (load_queue_entries[i].valid && load_executed && load_executed_rob_tag == load_queue_entries[i].rob_tag) begin
-					load_queue_entries[i].executed <= 1;
-				end
-
-				if (load_queue_entries[i].valid && load_succeeded && load_succeeded_rob_tag == load_queue_entries[i].rob_tag) begin
-					load_queue_entries[i].succeeded <= 1;
+				if (ldq_valid[i] && load_succeeded && load_succeeded_rob_tag == ldq_rob_tag[i]) begin
+					ldq_succeeded[i] <= 1;
 				end
 
 				/*
@@ -146,19 +157,17 @@ module load_queue
 				* that it's pointing to a committed entry before clearing the
 				* entry and incrementing.
 				*/
-				if (load_queue_entries[i].valid
-						&& rob_commit
-						&& rob_commit_tag == load_queue_entries[i].rob_tag) begin
-					load_queue_entries[i].committed <= 1;
+				if (ldq_valid[i] && rob_commit && rob_commit_tag == ldq_rob_tag[i]) begin
+					ldq_committed[i] <= 1;
 				end
 
 				// set the order fail bit of this entry if it was detected by the searcher
-				load_queue_entries[i].order_fail <= load_queue_entries[i].order_fail | order_failures[i];
+				ldq_order_fail[i] <= ldq_order_fail[i] | order_failures[i];
 
 				// if a store is being fired, we must clear
 				// that bit in all store_masks
 				if (stq_entry_fired) begin
-					load_queue_entries[i].store_mask[stq_entry_fired_index] <= 1'b0;
+					ldq_store_mask[i][stq_entry_fired_index] <= 1'b0;
 				end
 			end
 		end
@@ -167,19 +176,19 @@ module load_queue
 	// Since the tail pointer points to the next available entry in the
 	// buffer, if that entry has the valid bit set, there are no more
 	// available entries and the buffer is full.
-	assign full = load_queue_entries[tail].valid;
+	assign full = ldq_valid[tail];
 
 	function void clear_entry(integer index);
-		load_queue_entries[index].valid <= 0;
-		load_queue_entries[index].address <= 0;
-		load_queue_entries[index].address_valid <= 0;
-		load_queue_entries[index].executed <= 0;
-		load_queue_entries[index].succeeded <= 0;
-		load_queue_entries[index].committed <= 0;
-		load_queue_entries[index].order_fail <= 0;
-		load_queue_entries[index].store_mask <= 0;
-		load_queue_entries[index].forward_stq_data <= 0;
-		load_queue_entries[index].forward_stq_index <= 0;
-		load_queue_entries[index].rob_tag <= 0;
+		ldq_valid[index] <= 0;
+		ldq_address[index] <= 0;
+		ldq_address_valid[index] <= 0;
+		ldq_executed[index] <= 0;
+		ldq_succeeded[index] <= 0;
+		ldq_committed[index] <= 0;
+		ldq_order_fail[index] <= 0;
+		ldq_store_mask[index] <= 0;
+		ldq_forward_stq_data[index] <= 0;
+		ldq_forward_stq_index[index] <= 0;
+		ldq_rob_tag[index] <= 0;
 	endfunction
 endmodule

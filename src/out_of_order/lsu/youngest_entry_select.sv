@@ -39,7 +39,7 @@ module youngest_entry_select #(parameter QUEUE_SIZE=32) (
 	assign any_entry_valid = |queue_valid_bits;
 
 	integer i;
-	always begin
+	always_comb begin
 		youngest_index = 0;
 		for (i = 0; i < QUEUE_SIZE; i = i + 1) begin
 			if (youngest_one_hot[i]) begin

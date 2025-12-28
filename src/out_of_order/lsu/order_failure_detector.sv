@@ -2,15 +2,20 @@
  * Order failure detector
  * This is a part of the "searcher" from the BOOM LSU.
  * When a store commits, its index shall be provided to the stq_commit_index
- * input.  This module compares all the load_queue_entries to find all younger
+ * input.  This module compares all the load queue entries to find all younger
  * loads.  If any of these loads have had data forwarded from an older store,
  * they are flagged for an order failure to flush the pipeline of all
  * subsequent instructions.
  */
-module order_failure_detector
-	import lsu_pkg::*; (
-		input load_queue_entry [LDQ_SIZE-1:0] load_queue_entries,
-		input store_queue_entry [STQ_SIZE-1:0] store_queue_entries,
+module order_failure_detector #(parameter XLEN=32, parameter LDQ_SIZE=32, parameter STQ_SIZE=32) (
+		input logic [LDQ_SIZE-1:0]				ldq_valid,
+		input logic [LDQ_SIZE-1:0][XLEN-1:0]			ldq_address,
+		input logic [LDQ_SIZE-1:0]				ldq_succeeded,
+		input logic [LDQ_SIZE-1:0][STQ_SIZE-1:0]		ldq_store_mask,
+		input logic [LDQ_SIZE-1:0]				ldq_forward_stq_data,
+		input logic [LDQ_SIZE-1:0][$clog2(STQ_SIZE)-1:0]	ldq_forward_stq_index,
+
+		input logic [STQ_SIZE-1:0][XLEN-1:0] stq_address,
 
 		// putting these here as I think we are going to need these to
 		// compare the age of different stores by computing how far
@@ -40,7 +45,7 @@ module order_failure_detector
 			age_comparator #(.N($clog2(STQ_SIZE))) age_comparator (
 				.head(stq_head),
 				.a(stq_commit_index),
-				.b(load_queue_entries[generate_iterator].forward_stq_index),
+				.b(ldq_forward_stq_index[generate_iterator]),
 				.result(fwd_index_older_than_stq_commit_index[generate_iterator])
 			);
 		end
@@ -53,14 +58,14 @@ module order_failure_detector
 			// I assume we need to check the store mask to know if
 			// a load is dependent on this store.
 			order_failures[i] = (stq_commit	// has this store index actually committed?
-				&& load_queue_entries[i].valid	// is the load valid?
-				&& load_queue_entries[i].succeeded		// has the load acquired and broadcast data?
-				&& load_queue_entries[i].store_mask[stq_commit_index]	// is the load younger than the committing store?
+				&& ldq_valid[i]		// is the load valid?
+				&& ldq_succeeded[i]	// has the load acquired and broadcast data?
+				&& ldq_store_mask[i][stq_commit_index]	// is the load younger than the committing store?
 				// did the load acquire data from the same address?
-				&& load_queue_entries[i].address == store_queue_entries[stq_commit_index].address
+				&& ldq_address[i] == stq_address[stq_commit_index]
 				// data was not forwarded OR was forwarded from an older store
-				&& (!load_queue_entries[i].forward_stq_data || (
-					load_queue_entries[i].forward_stq_data && fwd_index_older_than_stq_commit_index[i]))
+				&& (!ldq_forward_stq_data[i] || (
+					ldq_forward_stq_data[i] && fwd_index_older_than_stq_commit_index[i]))
 			);
 		end
 	end

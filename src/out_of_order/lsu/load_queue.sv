@@ -17,10 +17,6 @@
  *	- cancel the fired load operation
  *	- forward the data if it's available in the store buffer
  *	- sleep until the data is available if it isn't already available
- *
- * - TODO: clear bits of the store_mask when they are fired to memory and
- *   leave the STQ
- * - TODO: track when loads are sleeping and figure out how to wake them
  */
 module load_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ_SIZE=32, parameter STQ_SIZE=32) (
 	input logic clk,
@@ -42,42 +38,79 @@ module load_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ
 	input logic [XLEN-1:0] agu_address_data,
 	input logic [ROB_TAG_WIDTH-1:0] agu_address_rob_tag,	// use to identify which
 
-	// signals to indicate a load has been fired
-	input logic load_executed,
-	input logic [$clog2(LDQ_SIZE)-1:0] load_executed_index,
+	// CDB signals so we can identify when a sleeping load can be retried
+	input logic cdb_active,
+	input logic [ROB_TAG_WIDTH-1:0] cdb_tag,
+
+	// signals for a load is going through the execute stage
+	// load_fired: is a load being fired this cycle?
+	// load_fired_index: load queue index of the load being fired
+	// load_fired_sleep: has the searcher determined that this load
+	// needs to be put to sleep?  this will set the sleeping bit of that
+	// entry AND ENSURE THAT THE EXECUTED BIT REMAINS CLEARED!!
+	// load_fired_sleep_rob_tag: ROB tag of the store instruction that
+	// caused this load to sleep.  when the ROB tag is seen on the CDB,
+	// the load can be retried and forwarded.
+	// load_fired_forward: has the searcher determined that the data
+	// for this load can be forwarded from the store queue?
+	// load_fired_forward_index: the index of the store queue entry that
+	// the data has been forwarded from if load_fired_forward is set.
+	// NOTE: sleep and forward are expected to be MUTUALLY EXCLUSIVE
+	// NOTE: in the load queue, ldq_executed[i] and ldq_sleeping[i] MUST
+	// ALSO BE MUTUALLY EXCLUSIVE
+	input logic				load_fired,
+	input logic [$clog2(LDQ_SIZE)-1:0]	load_fired_index,
+	input logic				load_fired_sleep,
+	input logic [ROB_TAG_WIDTH-1:0]		load_fired_sleep_rob_tag,
+	input logic				load_fired_forward,
+	input logic [$clog2(STQ_SIZE)-1:0]	load_fired_forward_index,
 
 	// signals from the memory interface to designate a succeeded load
 	// the load_succeeded_rob_tag is tracked by cache miss registers in
 	// the caches
-	input logic load_succeeded,				// bool to say if a load succeeded
-	input logic [ROB_TAG_WIDTH-1:0] load_succeeded_rob_tag,	// ROB tag of the succeeded load
+	input logic			load_succeeded,		// bool to say if a load succeeded
+	input logic [ROB_TAG_WIDTH-1:0]	load_succeeded_rob_tag,	// ROB tag of the succeeded load
 
 	// rob signals to know when loads commit
-	input logic rob_commit,
-	input logic [ROB_TAG_WIDTH-1:0] rob_commit_tag,
+	input logic			rob_commit,
+	input logic [ROB_TAG_WIDTH-1:0]	rob_commit_tag,
 
 	// each bit determines if that entry experienced an order failure
 	// multiple loads may have their order failures set at once, if they
 	// all loaded before the committing store
-	input logic [LDQ_SIZE-1:0] order_failures,
+	input logic [LDQ_SIZE-1:0]	order_failures,
 
 	// need to see when a STQ entry fires to memory so we can clear that
 	// bit of all store_masks
-	input logic stq_entry_fired,
-	input logic [$clog2(STQ_SIZE)-1:0] stq_entry_fired_index,
+	input logic				store_fired,
+	input logic [$clog2(STQ_SIZE)-1:0]	store_fired_index,
 
-	// output load_queue_entry [LDQ_SIZE-1:0] load_queue_entries,
+	// load queue buffer contents
+	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+	// IF YOU ADD AN ENTRY HERE, PLEASE REMEMBER TO CLEAR IT IN THE
+	// clear_entry FUNCTION!!!
+	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 	output logic [LDQ_SIZE-1:0]				ldq_valid,
 	output logic [LDQ_SIZE-1:0][XLEN-1:0]			ldq_address,
 	output logic [LDQ_SIZE-1:0]				ldq_address_valid,
+	output logic [LDQ_SIZE-1:0]				ldq_sleeping,
+	output logic [LDQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]		ldq_sleep_rob_tag,
 	output logic [LDQ_SIZE-1:0]				ldq_executed,
 	output logic [LDQ_SIZE-1:0]				ldq_succeeded,
 	output logic [LDQ_SIZE-1:0]				ldq_committed,
 	output logic [LDQ_SIZE-1:0]				ldq_order_fail,
 	output logic [LDQ_SIZE-1:0][STQ_SIZE-1:0]		ldq_store_mask,
-	output logic [LDQ_SIZE-1:0]				ldq_forward_stq_data,
+	output logic [LDQ_SIZE-1:0]				ldq_forwarded,
 	output logic [LDQ_SIZE-1:0][$clog2(STQ_SIZE)-1:0]	ldq_forward_stq_index,
 	output logic [LDQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]		ldq_rob_tag,
+
+	// status bits rotated such that the head is at index 0
+	// useful for modules that select the youngest or oldest entries that
+	// meet specific criteria using priority encoders
+	output logic [LDQ_SIZE-1:0]				ldq_rotated_valid,
+	output logic [LDQ_SIZE-1:0]				ldq_rotated_address_valid,
+	output logic [LDQ_SIZE-1:0]				ldq_rotated_sleeping,
+	output logic [LDQ_SIZE-1:0]				ldq_rotated_executed,
 
 	// circular buffer pointers
 	output logic [$clog2(LDQ_SIZE)-1:0] head,
@@ -107,8 +140,22 @@ module load_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ
 				tail <= tail + 1;
 			end
 
-			if (ldq_valid[load_executed_index] && load_executed) begin
-				ldq_executed[load_executed_index] <= 1;
+			// set the signals for the load fired this cycle (if
+			// one was fired)
+			if (ldq_valid[load_fired_index] && load_fired) begin
+				if (load_fired_sleep) begin
+					ldq_executed[load_fired_index] <= 0;
+					ldq_sleeping[load_fired_index] <= 1;
+					ldq_sleep_rob_tag[load_fired_index] <= load_fired_sleep_rob_tag;
+					// forward should already be cleared
+				end else begin
+					ldq_executed[load_fired_index] <= 1;
+					ldq_sleeping[load_fired_index] <= 0;	// should already be cleared?
+					if (load_fired_forward) begin
+						ldq_forwarded[load_fired_index] <= 1;
+						ldq_forward_stq_index[load_fired_index] <= load_fired_forward_index;
+					end
+				end
 			end
 
 			// if the entry at the head is committed, free it and increment head
@@ -116,21 +163,6 @@ module load_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ
 				clear_entry(int'(head));
 				head <= head + 1;
 			end
-
-			// TODO:
-			// - order_fail
-			//	- "To discover ordering failures, when a store
-			//	commits, it checks the entire LDQ for any
-			//	address matches. If there is a match, the
-			//	store checks to see if the load has executed,
-			//	and if it got its data from memory or if the
-			//	data was forwarded from an older store. In
-			//	either case, a memory ordering failure has
-			//	occurred."
-			//	- needs to be able to update all or multiple
-			//	entries in one cycle (DONE)
-			// - forward_stq_data
-			// - forward_stq_index
 
 			// loop to do operations on every entry
 			for (i = 0; i < LDQ_SIZE; i = i + 1) begin	// each entry in the buffer makes this comparison
@@ -140,6 +172,14 @@ module load_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ
 					// if match, update address and declare it to be valid
 					ldq_address[i] <= agu_address_data;
 					ldq_address_valid[i] <= 1;
+				end
+
+				// if the load is sleeping and the store that caused
+				// it to sleep is seen on the CDB, we can wake the
+				// load so it can be retried
+				if (ldq_valid[i] && ldq_sleeping[i]
+						&& cdb_active && cdb_tag == ldq_sleep_rob_tag[i]) begin
+					ldq_sleeping[i] <= 0;
 				end
 
 				if (ldq_valid[i] && load_succeeded && load_succeeded_rob_tag == ldq_rob_tag[i]) begin
@@ -166,8 +206,8 @@ module load_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ
 
 				// if a store is being fired, we must clear
 				// that bit in all store_masks
-				if (stq_entry_fired) begin
-					ldq_store_mask[i][stq_entry_fired_index] <= 1'b0;
+				if (store_fired) begin
+					ldq_store_mask[i][store_fired_index] <= 1'b0;
 				end
 			end
 		end
@@ -178,16 +218,23 @@ module load_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ
 	// available entries and the buffer is full.
 	assign full = ldq_valid[tail];
 
+	assign ldq_rotated_valid = (ldq_valid >> head) | (ldq_valid << (LDQ_SIZE - head));
+	assign ldq_rotated_address_valid = (ldq_address_valid >> head) | (ldq_address_valid << (LDQ_SIZE - head));
+	assign ldq_rotated_sleeping = (ldq_sleeping >> head) | (ldq_sleeping << (LDQ_SIZE - head));
+	assign ldq_rotated_executed = (ldq_executed >> head) | (ldq_executed << (LDQ_SIZE - head));
+
 	function void clear_entry(integer index);
 		ldq_valid[index] <= 0;
 		ldq_address[index] <= 0;
 		ldq_address_valid[index] <= 0;
+		ldq_sleeping[index] <= 0;
+		ldq_sleep_rob_tag[index] <= 0;
 		ldq_executed[index] <= 0;
 		ldq_succeeded[index] <= 0;
 		ldq_committed[index] <= 0;
 		ldq_order_fail[index] <= 0;
 		ldq_store_mask[index] <= 0;
-		ldq_forward_stq_data[index] <= 0;
+		ldq_forwarded[index] <= 0;
 		ldq_forward_stq_index[index] <= 0;
 		ldq_rob_tag[index] <= 0;
 	endfunction

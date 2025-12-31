@@ -27,6 +27,9 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter ST
 	input logic rob_commit,
 	input logic [ROB_TAG_WIDTH-1:0] rob_commit_tag,
 
+	input logic store_fired,
+	input logic [$clog2(STQ_SIZE)-1:0] store_fired_index,
+
 	input logic store_succeeded,
 	input logic [ROB_TAG_WIDTH-1:0] store_succeeded_rob_tag,
 
@@ -35,14 +38,31 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter ST
 	input logic [XLEN-1:0] cdb_data,
 	input logic [ROB_TAG_WIDTH-1:0] cdb_tag,
 	
+	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+	// IF YOU ADD AN ENTRY HERE, PLEASE REMEMBER TO CLEAR IT IN THE
+	// clear_entry FUNCTION!!!
+	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 	output logic [STQ_SIZE-1:0] stq_valid,		// is the ENTRY valid
 	output logic [STQ_SIZE-1:0] [XLEN-1:0] stq_address,
 	output logic [STQ_SIZE-1:0] stq_address_valid,
 	output logic [STQ_SIZE-1:0] [XLEN-1:0] stq_data,
 	output logic [STQ_SIZE-1:0] stq_data_valid,	// is the data for the store present in the entry?
 	output logic [STQ_SIZE-1:0] stq_committed,
+	// we need to track if we've executed this so we don't
+	// issue it again while waiting for the succeeded signal
+	output logic [STQ_SIZE-1:0] stq_executed,
 	output logic [STQ_SIZE-1:0] stq_succeeded,
 	output logic [STQ_SIZE-1:0] [ROB_TAG_WIDTH-1:0] stq_rob_tag,
+
+	// status bits rotated such that the head is at index 0
+	// useful for modules that select the youngest or oldest entries that
+	// meet specific criteria using priority encoders
+	output logic [STQ_SIZE-1:0] stq_rotated_valid,	
+	output logic [STQ_SIZE-1:0] stq_rotated_address_valid,
+	output logic [STQ_SIZE-1:0] stq_rotated_data_valid,
+	output logic [STQ_SIZE-1:0] stq_rotated_committed,
+	output logic [STQ_SIZE-1:0] stq_rotated_executed,
+	output logic [STQ_SIZE-1:0] stq_rotated_succeeded,
 
 	// circular buffer pointers
 	output logic [$clog2(STQ_SIZE)-1:0] head,
@@ -76,6 +96,10 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter ST
 				stq_data_valid[tail] <= store_data_in_valid;
 
 				tail <= tail + 1;
+			end
+
+			if (stq_valid[store_fired_index] && store_fired) begin
+				stq_executed[store_fired_index] <= 1;
 			end
 
 			for (i = 0; i < STQ_SIZE; i = i + 1) begin
@@ -113,6 +137,13 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter ST
 	// available entries and the buffer is full.
 	assign full = stq_valid[tail];
 
+	assign stq_rotated_valid = (stq_valid >> head) | (stq_valid << (STQ_SIZE - head));
+	assign stq_rotated_address_valid = (stq_address_valid >> head) | (stq_address_valid << (STQ_SIZE - head));
+	assign stq_rotated_data_valid = (stq_data_valid >> head) | (stq_data_valid << (STQ_SIZE - head));
+	assign stq_rotated_committed = (stq_committed >> head) | (stq_committed << (STQ_SIZE - head));
+	assign stq_rotated_executed = (stq_executed >> head) | (stq_executed << (STQ_SIZE - head));
+	assign stq_rotated_succeeded = (stq_succeeded >> head) | (stq_succeeded << (STQ_SIZE - head));
+
 	function void clear_entry (integer index);
 		stq_valid[index] <= 0;
 		stq_address[index] <= 0;
@@ -120,6 +151,7 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter ST
 		stq_data[index] <= 0;
 		stq_data_valid[index] <= 0;
 		stq_committed[index] <= 0;
+		stq_executed[index] <= 0;
 		stq_succeeded[index] <= 0;
 		stq_rob_tag[index] <= 0;
 	endfunction

@@ -46,21 +46,39 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	// I don't think an address needs to be associated with this, it's
 	// just whatever memory request is being put out to the L1 cache this
 	// clock cycle
-	output logic kill_mem_req
+	output logic kill_mem_req,
+	
+	// fire_memory_op: bool enabling issuing of memory operations
+	// with the memory_op_type, memory_address, and memory_data
+	// memory_op_type: 0 = load, 1 = store
+	// memory_address: address to be sent to memory, routed from
+	// the load queue or store queue
+	// memory_data: data to be sent to memory for stores
+	output logic		fire_memory_op,
+	output logic		memory_op_type,
+	output logic [XLEN-1:0]	memory_address,
+	output logic [XLEN-1:0]	memory_data
 	);
 
 	// load queue buffer signals
 	logic [LDQ_SIZE-1:0]				ldq_valid;
 	logic [LDQ_SIZE-1:0][XLEN-1:0]			ldq_address;
 	logic [LDQ_SIZE-1:0]				ldq_address_valid;
+	logic [LDQ_SIZE-1:0]				ldq_sleeping;
+	logic [LDQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]		ldq_sleep_rob_tag;
 	logic [LDQ_SIZE-1:0]				ldq_executed;
 	logic [LDQ_SIZE-1:0]				ldq_succeeded;
 	logic [LDQ_SIZE-1:0]				ldq_committed;
 	logic [LDQ_SIZE-1:0]				ldq_order_fail;
 	logic [LDQ_SIZE-1:0][STQ_SIZE-1:0]		ldq_store_mask;
-	logic [LDQ_SIZE-1:0]				ldq_forward_stq_data;
+	logic [LDQ_SIZE-1:0]				ldq_forwarded;
 	logic [LDQ_SIZE-1:0][$clog2(STQ_SIZE)-1:0]	ldq_forward_stq_index;
 	logic [LDQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]		ldq_rob_tag;
+
+	logic [LDQ_SIZE-1:0]				ldq_rotated_valid;
+	logic [LDQ_SIZE-1:0]				ldq_rotated_address_valid;
+	logic [LDQ_SIZE-1:0]				ldq_rotated_sleeping;
+	logic [LDQ_SIZE-1:0]				ldq_rotated_executed;
 
 	// store queue buffer signals
 	logic [STQ_SIZE-1:0] stq_valid;		// is the ENTRY valid
@@ -69,8 +87,16 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	logic [STQ_SIZE-1:0] [XLEN-1:0] stq_data;
 	logic [STQ_SIZE-1:0] stq_data_valid;	// is the data for the store present in the entry?
 	logic [STQ_SIZE-1:0] stq_committed;
+	logic [STQ_SIZE-1:0] stq_executed;
 	logic [STQ_SIZE-1:0] stq_succeeded;
 	logic [STQ_SIZE-1:0] [ROB_TAG_WIDTH-1:0] stq_rob_tag;
+
+	logic [STQ_SIZE-1:0] stq_rotated_valid;
+	logic [STQ_SIZE-1:0] stq_rotated_address_valid;
+	logic [STQ_SIZE-1:0] stq_rotated_data_valid;
+	logic [STQ_SIZE-1:0] stq_rotated_committed;
+	logic [STQ_SIZE-1:0] stq_rotated_executed;
+	logic [STQ_SIZE-1:0] stq_rotated_succeeded;
 
 	logic [$clog2(LDQ_SIZE)-1:0] ldq_head;
 	logic [$clog2(STQ_SIZE)-1:0] stq_head;
@@ -85,15 +111,21 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	// consumed by: lsu_control, output
 	logic stq_full;
 
-	// load_executed - is a load entering execution this clock cycle?
+	// load_fired - is a load being fired this clock cycle?
 	// produced by: lsu_control
 	// consumed by: load_queue
-	logic load_executed;
-
-	// ldq_mem_stage_index - LDQ index of the load being executed this cycle
+	logic load_fired;
+	// load_fired_ldq_index - LDQ index of the load being fired this cycle
 	// produced by: lsu_control
 	// consumed by: load_queue, load_store_dep_checker
-	logic [$clog2(LDQ_SIZE)-1:0] ldq_mem_stage_index;
+	logic [$clog2(LDQ_SIZE)-1:0] load_fired_ldq_index;
+
+	// store_fired - did the store queue just fire a store to memory?
+	// needed to clear bits in the store mask
+	// produced by: lsu_control
+	// consumed by: load_queue, store_queue
+	logic store_fired;
+	logic [$clog2(STQ_SIZE)-1:0] store_fired_index;
 
 	// order_failures - bitmask of load queue entries that have
 	// experienced an ordering failure with respect to the store that
@@ -103,19 +135,21 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	// TODO: this will need to store an exception in the ROB
 	logic [LDQ_SIZE-1:0] order_failures;
 
+	// load_fired_sleep - is the currently fired load being put to sleep?
+	// load_fired_sleep_rob_tag - the ROB tag for the store that put this
+	// load to sleep.  the load queue will monitor the CDB for this tag
+	// and wake the load when it's seen on the CDB while the CDB is active
+	// produced by: load_store_dep_checker
+	// consumed by: load_queue
+	logic				load_fired_sleep;
+	logic [ROB_TAG_WIDTH-1:0]	load_fired_sleep_rob_tag;
+
 	// forward - is the data for the currently executing load being
 	// forwarded from the store queue?
 	// produced by: load_store_dep_checker
 	// consumed by: load_queue
-	logic forward;
-	logic [$clog2(STQ_SIZE)-1:0] stq_forward_index;
-
-	// stq_entry_fired - did the store queue just fire a store to memory?
-	// needed to clear bits in the store mask
-	// produced by: TODO ???
-	// consumed by: load_queue
-	logic stq_entry_fired;
-	logic [$clog2(STQ_SIZE)-1:0] stq_entry_fired_index;
+	logic				forward;
+	logic [$clog2(STQ_SIZE)-1:0]	stq_forward_index;
 
 	load_queue #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) ldq (
 		.clk(clk),
@@ -129,8 +163,15 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 		.agu_address_data(agu_address_data),
 		.agu_address_rob_tag(agu_address_rob_tag),
 
-		.load_executed(load_executed),
-		.load_executed_index(ldq_mem_stage_index),
+		.cdb_active(cdb_active),
+		.cdb_tag(cdb_tag),
+
+		.load_fired(load_fired),
+		.load_fired_index(load_fired_ldq_index),
+		.load_fired_sleep(load_fired_sleep),
+		.load_fired_sleep_rob_tag(load_fired_sleep_rob_tag),
+		.load_fired_forward(forward),
+		.load_fired_forward_index(stq_forward_index),
 
 		.load_succeeded(load_succeeded),
 		.load_succeeded_rob_tag(load_succeeded_rob_tag),
@@ -140,20 +181,27 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 
 		.order_failures(order_failures),
 
-		.stq_entry_fired(stq_entry_fired),
-		.stq_entry_fired_index(stq_entry_fired_index),
+		.store_fired(store_fired),
+		.store_fired_index(store_fired_index),
 
 		.ldq_valid(ldq_valid),
 		.ldq_address(ldq_address),
 		.ldq_address_valid(ldq_address_valid),
+		.ldq_sleeping(ldq_sleeping),
+		.ldq_sleep_rob_tag(ldq_sleep_rob_tag),
 		.ldq_executed(ldq_executed),
 		.ldq_succeeded(ldq_succeeded),
 		.ldq_committed(ldq_committed),
 		.ldq_order_fail(ldq_order_fail),
 		.ldq_store_mask(ldq_store_mask),
-		.ldq_forward_stq_data(ldq_forward_stq_data),
+		.ldq_forwarded(ldq_forwarded),
 		.ldq_forward_stq_index(ldq_forward_stq_index),
 		.ldq_rob_tag(ldq_rob_tag),
+
+		.ldq_rotated_valid(ldq_rotated_valid),
+		.ldq_rotated_address_valid(ldq_rotated_address_valid),
+		.ldq_rotated_sleeping(ldq_rotated_sleeping),
+		.ldq_rotated_executed(ldq_rotated_executed),
 
 		.head(ldq_head),
 		.tail(),
@@ -176,6 +224,9 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 		.rob_commit(rob_commit),
 		.rob_commit_tag(rob_commit_tag),
 
+		.store_fired(store_fired),
+		.store_fired_index(store_fired_index),
+
 		.store_succeeded(store_succeeded),
 		.store_succeeded_rob_tag(store_succeeded_rob_tag),
 
@@ -189,8 +240,16 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 		.stq_data(stq_data),
 		.stq_data_valid(stq_data_valid),
 		.stq_committed(stq_committed),
+		.stq_executed(stq_executed),
 		.stq_succeeded(stq_succeeded),
 		.stq_rob_tag(stq_rob_tag),
+
+		.stq_rotated_valid(stq_rotated_valid),
+		.stq_rotated_address_valid(stq_rotated_address_valid),
+		.stq_rotated_data_valid(stq_rotated_data_valid),
+		.stq_rotated_committed(stq_rotated_committed),
+		.stq_rotated_executed(stq_rotated_executed),
+		.stq_rotated_succeeded(stq_rotated_succeeded),
 
 		.head(stq_head),
 		.tail(),
@@ -198,20 +257,24 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	);
 
 	// combinational component
-	load_store_dep_checker #(.XLEN(XLEN), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) lsdc (
+	load_store_dep_checker #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) lsdc (
 		.ldq_address(ldq_address),
 		.ldq_store_mask(ldq_store_mask),
 		.stq_valid(stq_valid),
 		.stq_address(stq_address),
 		.stq_address_valid(stq_address_valid),
 		.stq_data_valid(stq_data_valid),
+		.stq_rob_tag(stq_rob_tag),
 
 		.stq_head(stq_head),
-		// I think this comes from control logic
-		.ldq_mem_stage_index(ldq_mem_stage_index),
+
+		.load_fired(load_fired),
+		.load_fired_ldq_index(load_fired_ldq_index),
 
 		// outputs
 		.kill_mem_req(kill_mem_req),
+		.sleep(load_fired_sleep),
+		.sleep_rob_tag(load_fired_sleep_rob_tag),
 		.forward(forward),
 		.stq_forward_index(stq_forward_index)
 	);
@@ -223,7 +286,7 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 		.ldq_address(ldq_address),
 		.ldq_succeeded(ldq_succeeded),
 		.ldq_store_mask(ldq_store_mask),
-		.ldq_forward_stq_data(ldq_forward_stq_data),
+		.ldq_forwarded(ldq_forwarded),
 		.ldq_forward_stq_index(ldq_forward_stq_index),
 
 		// store queue signals
@@ -241,13 +304,17 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 
 	lsu_control #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) control (
 		// load queue signals
-		.ldq_valid(ldq_valid),
-		.ldq_address_valid(ldq_address_valid),
-		.ldq_executed(ldq_executed),
+		.ldq_address(ldq_address),
+		.ldq_rotated_valid(ldq_rotated_valid),
+		.ldq_rotated_address_valid(ldq_rotated_address_valid),
+		.ldq_rotated_sleeping(ldq_rotated_sleeping),
+		.ldq_rotated_executed(ldq_rotated_executed),
 
 		// store queue signals
-		.stq_valid(stq_valid),
-		.stq_committed(stq_committed),
+		.stq_address(stq_address),
+		.stq_rotated_valid(stq_rotated_valid),
+		.stq_rotated_executed(stq_rotated_executed),
+		.stq_rotated_committed(stq_rotated_committed),
 
 		// buffer pointers
 		.ldq_head(ldq_head),
@@ -256,12 +323,15 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 		.stq_full(stq_full),
 
 		// outputs
-		.fire_memory_op(),
-		.memory_op_type(),
-		.memory_address(),
-		.memory_data(),
+		.fire_memory_op(fire_memory_op),
+		.memory_op_type(memory_op_type),
+		.memory_address(memory_address),
+		.memory_data(memory_data),
 
-		.load_executed(load_executed),
-		.ldq_mem_stage_index(ldq_mem_stage_index)
+		.load_fired(load_fired),
+		.load_fired_ldq_index(load_fired_ldq_index),
+
+		.store_fired(store_fired),
+		.store_fired_index(store_fired_index)
 	);
 endmodule

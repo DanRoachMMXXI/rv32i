@@ -19,6 +19,9 @@ module test_store_queue;
 	logic				rob_commit;
 	logic [ROB_TAG_WIDTH-1:0]	rob_commit_tag;
 
+	logic				store_fired;
+	logic [$clog2(STQ_SIZE)-1:0]	store_fired_index;
+
 	logic				store_succeeded;
 	logic [ROB_TAG_WIDTH-1:0]	store_succeeded_rob_tag;
 
@@ -32,8 +35,16 @@ module test_store_queue;
 	logic [STQ_SIZE-1:0] [XLEN-1:0] stq_data;
 	logic [STQ_SIZE-1:0] stq_data_valid;	// is the data for the store present in the entry?
 	logic [STQ_SIZE-1:0] stq_committed;
+	logic [STQ_SIZE-1:0] stq_executed;
 	logic [STQ_SIZE-1:0] stq_succeeded;
 	logic [STQ_SIZE-1:0] [ROB_TAG_WIDTH-1:0] stq_rob_tag;
+
+	logic [STQ_SIZE-1:0] stq_rotated_valid;	
+	logic [STQ_SIZE-1:0] stq_rotated_address_valid;
+	logic [STQ_SIZE-1:0] stq_rotated_data_valid;
+	logic [STQ_SIZE-1:0] stq_rotated_committed;
+	logic [STQ_SIZE-1:0] stq_rotated_executed;
+	logic [STQ_SIZE-1:0] stq_rotated_succeeded;
 
 	logic [$clog2(STQ_SIZE)-1:0]		head;
 	logic [$clog2(STQ_SIZE)-1:0]		tail;
@@ -54,6 +65,9 @@ module test_store_queue;
 		.rob_commit(rob_commit),
 		.rob_commit_tag(rob_commit_tag),
 
+		.store_fired(store_fired),
+		.store_fired_index(store_fired_index),
+
 		.store_succeeded(store_succeeded),
 		.store_succeeded_rob_tag(store_succeeded_rob_tag),
 
@@ -67,8 +81,16 @@ module test_store_queue;
 		.stq_data(stq_data),
 		.stq_data_valid(stq_data_valid),
 		.stq_committed(stq_committed),
+		.stq_executed(stq_executed),
 		.stq_succeeded(stq_succeeded),
 		.stq_rob_tag(stq_rob_tag),
+
+		.stq_rotated_valid(stq_rotated_valid),	
+		.stq_rotated_address_valid(stq_rotated_address_valid),
+		.stq_rotated_data_valid(stq_rotated_data_valid),
+		.stq_rotated_committed(stq_rotated_committed),
+		.stq_rotated_executed(stq_rotated_executed),
+		.stq_rotated_succeeded(stq_rotated_succeeded),
 
 		.head(head),
 		.tail(tail),
@@ -93,10 +115,10 @@ module test_store_queue;
 		alloc_stq_entry = 1;
 		rob_tag_in = 19;
 		# 10
-		assert(stq_valid[0] == 1);
+		assert(stq_valid == 'h0001);
 		assert(stq_rob_tag[0] == 19);
-		assert(stq_data_valid[0] == 0);
-		assert(stq_address_valid[0] == 0);
+		assert(stq_data_valid == 'h0000);
+		assert(stq_address_valid == 'h0000);
 		// assert circular buffer pointers are correct
 		assert(head == 0);
 		assert(tail == 1);
@@ -112,13 +134,13 @@ module test_store_queue;
 		agu_address_rob_tag = 19;
 		# 10
 		// validate new entry was allocated
-		assert(stq_valid[1] == 1);
+		assert(stq_valid == 'h0003);
 		assert(stq_rob_tag[1] == 21);
-		assert(stq_data_valid[1] == 1);
+		assert(stq_data_valid == 'h0002);
 		assert(stq_data[1] == 'h11262025);
-		assert(stq_address_valid[1] == 0);
-		// validate address for index 0 was stored
-		assert(stq_address_valid[0] == 1);
+		// validate address for index 0 was stored and index 1 is
+		// still not valid
+		assert(stq_address_valid == 'h0001);
 		assert(stq_address[0] == 'hBA5EDCA7);
 		// assert circular buffer pointers are correct
 		assert(head == 0);
@@ -133,7 +155,7 @@ module test_store_queue;
 		agu_address_data = 'hDEADBEEF;
 		agu_address_rob_tag = 21;
 		# 10
-		assert(stq_address_valid[1] == 1);
+		assert(stq_address_valid == 'h0003);
 		assert(stq_address[1] == 'hDEADBEEF);
 
 		// reset AGU signals
@@ -147,7 +169,7 @@ module test_store_queue;
 		cdb_data = 'h01234567;
 		cdb_tag = 19;
 		# 10
-		assert(stq_data_valid[0] == 1);
+		assert(stq_data_valid == 'h0003);
 		assert(stq_data[0] == 'h01234567);
 
 		cdb_active = 0;
@@ -158,19 +180,36 @@ module test_store_queue;
 		rob_commit = 1;
 		rob_commit_tag = 19;
 		# 10
-		assert(stq_committed[0] == 1);
-		assert(stq_committed[1] == 0);
+		assert(stq_committed == 'h0001);
 
 		rob_commit_tag = 21;
 		# 10
-		assert(stq_committed[1] == 1);
+		assert(stq_committed == 'h0003);
 
 		rob_commit = 0;
 		rob_commit_tag = 0;
 
 		// now both entries are committed
-		// some other component would route these to the store, the
-		// store queue just needs to wait to see that the stores with
+		// the lsu_control will decide when to fire these to memory,
+		// and it will go in order from oldest committed store to
+		// newest.  the store_queue only needs to store that the
+		// stores have been fired so that the lsu_control doesn't
+		// refire them before they're signalled that they've
+		// succeeded.
+		
+		store_fired = 1;
+		store_fired_index = 0;
+		# 10
+		assert(stq_executed == 'h0001);
+
+		store_fired_index = 1;
+		# 10
+		assert(stq_executed == 'h0003);
+
+		store_fired = 0;
+		store_fired_index = 0;
+
+		// the store queue needs to wait to see that the stores with
 		// these ROB tags succeeded on the input ports
 
 		store_succeeded = 1;
@@ -179,23 +218,22 @@ module test_store_queue;
 		// The first cycle, the succeeded bit will be set.  The next
 		// cycle, the store queue will see that the store is succeeded,
 		// free the entry, and increment the head pointer.
-		assert(stq_succeeded[0] == 1);
-		assert(stq_succeeded[1] == 0);
+		assert(stq_succeeded == 'h0001);
 
 		store_succeeded_rob_tag = 21;
 		# 10
 		// First entry should be cleared
-		assert(stq_valid[0] == 0);
+		assert(stq_valid == 'h0002);
 		assert(head == 1);
 		// the second entry should have its succeeded bit set.
-		assert(stq_succeeded[1] == 1);
+		assert(stq_succeeded == 'h0002);
 
 		store_succeeded = 0;
 		store_succeeded_rob_tag = 0;
 		# 10
 		// now the second entry should be cleared and the head pointer
 		// should have incremented
-		assert(stq_valid[1] == 0);
+		assert(stq_valid == 'h0000);
 		assert(head == 2);
 
 		$display("All assertions passed.");

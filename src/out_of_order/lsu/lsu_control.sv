@@ -15,30 +15,20 @@
 * - handle flushing and reset the tail pointers on flushes
 */
 module lsu_control #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ_SIZE=32, parameter STQ_SIZE=32) (
-	input logic [LDQ_SIZE-1:0]				ldq_valid,
-	// input logic [LDQ_SIZE-1:0][XLEN-1:0]			ldq_address,
-	input logic [LDQ_SIZE-1:0]				ldq_address_valid,
-	input logic [LDQ_SIZE-1:0]				ldq_executed,
-	// input logic [LDQ_SIZE-1:0]				ldq_succeeded,
-	// input logic [LDQ_SIZE-1:0]				ldq_committed,
-	// input logic [LDQ_SIZE-1:0]				ldq_order_fail,
-	// input logic [LDQ_SIZE-1:0][STQ_SIZE-1:0]		ldq_store_mask,
-	// input logic [LDQ_SIZE-1:0]				ldq_forward_stq_data,
-	// input logic [LDQ_SIZE-1:0][$clog2(STQ_SIZE)-1:0]	ldq_forward_stq_index,
-	// input logic [LDQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]		ldq_rob_tag,
+	input logic [LDQ_SIZE-1:0][XLEN-1:0]			ldq_address,
+	input logic [LDQ_SIZE-1:0]				ldq_rotated_valid,
+	input logic [LDQ_SIZE-1:0]				ldq_rotated_address_valid,
+	input logic [LDQ_SIZE-1:0]				ldq_rotated_sleeping,
+	input logic [LDQ_SIZE-1:0]				ldq_rotated_executed,
 
 	// uncomment them as you need them
-	input logic [STQ_SIZE-1:0] stq_valid,		// is the ENTRY valid
-	// input logic [STQ_SIZE-1:0] [XLEN-1:0] stq_address,
-	// input logic [STQ_SIZE-1:0] stq_address_valid,
-	// input logic [STQ_SIZE-1:0] [XLEN-1:0] stq_data,
-	// input logic [STQ_SIZE-1:0] stq_data_valid,	// is the data for the store present in the entry?
-	input logic [STQ_SIZE-1:0] stq_committed,
-	// input logic [STQ_SIZE-1:0] stq_succeeded,
-	// input logic [STQ_SIZE-1:0] [ROB_TAG_WIDTH-1:0] stq_rob_tag,
+	input logic [STQ_SIZE-1:0] [XLEN-1:0]	stq_address,
+	input logic [STQ_SIZE-1:0]		stq_rotated_valid,		// is the ENTRY valid
+	input logic [STQ_SIZE-1:0]		stq_rotated_executed,
+	input logic [STQ_SIZE-1:0]		stq_rotated_committed,
 
-	input logic [$clog2(LDQ_SIZE)-1:0] ldq_head,
-	input logic [$clog2(STQ_SIZE)-1:0] stq_head,
+	input logic [$clog2(LDQ_SIZE)-1:0]	ldq_head,
+	input logic [$clog2(STQ_SIZE)-1:0]	stq_head,
 
 	input logic stq_full,
 
@@ -48,23 +38,27 @@ module lsu_control #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LD
 	// memory_address: address to be sent to memory, routed from
 	// the load queue or store queue
 	// memory_data: data to be sent to memory for stores
-	output logic fire_memory_op,
-	output logic memory_op_type,
-	output logic [XLEN-1:0] memory_address,
-	output logic [XLEN-1:0] memory_data,
+	output logic		fire_memory_op,
+	output logic		memory_op_type,
+	output logic [XLEN-1:0]	memory_address,
+	output logic [XLEN-1:0]	memory_data,
 
-	// load_executed: bool stating whether a load is being
-	// executed this clock cycle.  if this is set, the load queue
+	// load_fired: bool stating whether a load is being
+	// fired this clock cycle.  if this is set, the load queue
 	// will set the executed bit of that entry, and the searcher
 	// will compare this entry to the entries in the store queue
 	// for forwarding.
-	output logic load_executed,
-	// ldq_mem_stage_index: the index of the executed load if
-	// load_executed is set.  this should be the closest entry to
+	output logic load_fired,
+	// load_fired_ldq_index: the index of the executed load if
+	// load_fired is set.  this should be the closest entry to
 	// ldq_head with valid and address_valid set, and executed
 	// cleared, and is not sleeping.
-	// TODO: might just rename this globally to load_executed_index
-	output logic [$clog2(LDQ_SIZE)-1:0] ldq_mem_stage_index
+	output logic [$clog2(LDQ_SIZE)-1:0] load_fired_ldq_index,
+
+	// these signals serve the same purpose as the load_fired signals
+	// above
+	output logic store_fired,
+	output logic [$clog2(STQ_SIZE)-1:0] store_fired_index
 	);
 
 	// how do we pick whether to execute a load or a store?
@@ -77,42 +71,53 @@ module lsu_control #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LD
 	// - executing a load has a more meaningful performance gain than
 	// executing a store, so execute the load
 
-	// practically how do we find this?
-	// do we rotate all the entries?  that seems like a ton of hardware.
-	// assume we do.
-	// rotate all the entries in the load and store queue based on their
-	// heads
 	// search through to find the first entry that meets the selection
-	// criteria for each queue, use a LSB priority encoder to select it?
+	// criteria for each queue, use a LSB priority encoder to select it,
 	// then use the algorithm above to actually determine what's executed
 
-	// in order to select the load queue and store queue entries that are
-	// nearest to the head, we need to rotate them by ldq_head and
-	// stq_head bits respectively.
-	logic [LDQ_SIZE-1:0] ldq_rotated_valid;
-	logic [LDQ_SIZE-1:0] ldq_rotated_address_valid;
-	logic [LDQ_SIZE-1:0] ldq_rotated_executed;
-	logic [LDQ_SIZE-1:0] ldq_rotated_sleeping;
+	logic [LDQ_SIZE-1:0] ldq_ready_entries;
+	assign ldq_ready_entries = ldq_rotated_valid & ldq_rotated_address_valid & ~ldq_rotated_executed & ~ldq_rotated_sleeping;
+	logic can_fire_load;	// ;)
 
-	logic [STQ_SIZE-1:0] stq_rotated_valid;
-	logic [STQ_SIZE-1:0] stq_rotated_committed;
+	logic [STQ_SIZE-1:0] stq_ready_entries;
+	assign stq_ready_entries = stq_rotated_valid & stq_rotated_committed;	// TODO: what else might we need here?
+	logic can_fire_store;
 
-	always_comb begin
-	end
-	
-	// function logic ldq_entry_ready(load_queue_entry ldq_entry);
-	// 	return ldq_entry.valid
-	// 		&& ldq_entry.address_valid
-	// 		&& !ldq_entry.executed;
-	// 	// TODO: what else might we need here?
-	// 	// - not sleeping?
-	// 	//   - important for not re-executing loads that are waiting
-	// 	//   on a store
-	// endfunction
+	logic [$clog2(LDQ_SIZE)-1:0] ldq_oldest_ready_index_rotated;
+	logic [$clog2(STQ_SIZE)-1:0] stq_oldest_ready_index_rotated;
+	logic [$clog2(LDQ_SIZE)-1:0] ldq_oldest_ready_index;
+	logic [$clog2(STQ_SIZE)-1:0] stq_oldest_ready_index;
 
-	// function logic stq_entry_ready(store_queue_entry stq_entry);
-	// 	return stq_entry.valid
-	// 		&& stq_entry.committed;
-	// 	// TODO: what else might we need here?
-	// endfunction
+	lsb_priority_encoder #(.N(LDQ_SIZE)) ldq_ready_index_select (
+		.in(ldq_ready_entries),
+		.out(ldq_oldest_ready_index_rotated),
+		.valid(can_fire_load)
+	);
+
+	lsb_priority_encoder #(.N(STQ_SIZE)) stq_ready_index_select (
+		.in(stq_ready_entries),
+		.out(stq_oldest_ready_index_rotated),
+		.valid(can_fire_store)
+	);
+
+	// get the actual index of the ready buffer entries
+	assign ldq_oldest_ready_index = ldq_oldest_ready_index_rotated + ldq_head;
+	assign stq_oldest_ready_index = stq_oldest_ready_index_rotated + stq_head;
+
+	assign fire_memory_op = can_fire_load | can_fire_store;
+
+	// as per the algorithm I wrote, the only condition in which we want
+	// to fire a store before a load is if the store queue is full.
+	assign load_fired = can_fire_load && !stq_full;
+	assign store_fired = !load_fired && can_fire_store;
+	assign memory_op_type = ~load_fired;		// memory_op_type != store_fired
+
+	assign memory_address = ({XLEN{~memory_op_type}} & ldq_address[ldq_oldest_ready_index])	// load address routing
+		| ({XLEN{memory_op_type}} & stq_address[stq_oldest_ready_index]);	// store address routing
+	assign memory_data = stq_address[stq_oldest_ready_index];
+	// we can just assign load_fired_ldq_index and store_fired_index
+	// as nothing SHOULD use them if load_fired and store_fired are not set
+	assign load_fired_ldq_index = ldq_oldest_ready_index;
+	assign store_fired_index = stq_oldest_ready_index;
+
 endmodule

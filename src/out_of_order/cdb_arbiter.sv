@@ -15,10 +15,10 @@ module cdb_arbiter #(parameter N=4) (
 	output logic cdb_active
 	);
 
-	wire [N-1:0] mask;
-	assign mask[N-1] = 1'b0;
-	assign mask[N-2:0] = mask[N-1:1] | request[N-1:1];
-	assign grant = request & ~mask;
+	msb_fixed_priority_arbiter #(.N(N)) arbiter (
+		.in(request),
+		.out(grant)
+	);
 
 	assign cdb_active = |grant;
 endmodule

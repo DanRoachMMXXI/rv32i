@@ -208,8 +208,11 @@ ofd order_failure_detector:
 
 searcher: load_store_dep_checker order_failure_detector
 
+lsu_control:
+	verilator --binary -j 0 src/out_of_order/lsu/lsu_control.sv src/common/lsb_priority_encoder.sv
+
 lsu load_store_unit:
-	verilator --binary -j 0 src/out_of_order/lsu/*.sv
+	verilator --binary -j 0 src/out_of_order/lsu/*.sv src/common/lsb_priority_encoder.sv
 
 clean:
 	rm -rf work transcript *.log *.wlf

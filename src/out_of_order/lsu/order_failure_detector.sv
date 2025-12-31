@@ -6,13 +6,18 @@
  * loads.  If any of these loads have had data forwarded from an older store,
  * they are flagged for an order failure to flush the pipeline of all
  * subsequent instructions.
+ * - "To discover ordering failures, when a store commits, it checks the entire
+ *   LDQ for any address matches. If there is a match, the store checks to see
+ *   if the load has executed, and if it got its data from memory or if the
+ *   data was forwarded from an older store. In either case, a memory ordering
+ *   failure has occurred."
  */
 module order_failure_detector #(parameter XLEN=32, parameter LDQ_SIZE=32, parameter STQ_SIZE=32) (
 		input logic [LDQ_SIZE-1:0]				ldq_valid,
 		input logic [LDQ_SIZE-1:0][XLEN-1:0]			ldq_address,
 		input logic [LDQ_SIZE-1:0]				ldq_succeeded,
 		input logic [LDQ_SIZE-1:0][STQ_SIZE-1:0]		ldq_store_mask,
-		input logic [LDQ_SIZE-1:0]				ldq_forward_stq_data,
+		input logic [LDQ_SIZE-1:0]				ldq_forwarded,
 		input logic [LDQ_SIZE-1:0][$clog2(STQ_SIZE)-1:0]	ldq_forward_stq_index,
 
 		input logic [STQ_SIZE-1:0][XLEN-1:0] stq_address,
@@ -64,8 +69,8 @@ module order_failure_detector #(parameter XLEN=32, parameter LDQ_SIZE=32, parame
 				// did the load acquire data from the same address?
 				&& ldq_address[i] == stq_address[stq_commit_index]
 				// data was not forwarded OR was forwarded from an older store
-				&& (!ldq_forward_stq_data[i] || (
-					ldq_forward_stq_data[i] && fwd_index_older_than_stq_commit_index[i]))
+				&& (!ldq_forwarded[i] || (
+					ldq_forwarded[i] && fwd_index_older_than_stq_commit_index[i]))
 			);
 		end
 	end

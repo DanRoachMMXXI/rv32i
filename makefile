@@ -201,18 +201,18 @@ yes youngest_entry_select:
 	verilator --binary -j 0 {test,src}/out_of_order/lsu/youngest_entry_select.sv
 
 lsdc load_store_dep_checker:
-	verilator --binary -j 0 src/out_of_order/lsu/youngest_entry_select.sv src/out_of_order/lsu/load_store_dep_checker.sv
+	verilator --binary -j 0 test/out_of_order/lsu/load_store_dep_checker.sv src/out_of_order/lsu/youngest_entry_select.sv src/out_of_order/lsu/load_store_dep_checker.sv
 
 ofd order_failure_detector:
-	verilator --binary -j 0 src/out_of_order/lsu/age_comparator.sv src/out_of_order/lsu/order_failure_detector.sv
+	verilator --binary -j 0 test/out_of_order/lsu/order_failure_detector.sv src/out_of_order/lsu/age_comparator.sv src/out_of_order/lsu/order_failure_detector.sv
 
 searcher: load_store_dep_checker order_failure_detector
 
 lsu_control:
-	verilator --binary -j 0 src/out_of_order/lsu/lsu_control.sv src/common/lsb_priority_encoder.sv
+	verilator --binary -j 0 test/out_of_order/lsu/lsu_control.sv src/out_of_order/lsu/lsu_control.sv src/common/lsb_priority_encoder.sv
 
 lsu load_store_unit:
-	verilator --binary -j 0 src/out_of_order/lsu/*.sv src/common/lsb_priority_encoder.sv
+	verilator --binary -j 0 +define+DEBUG test/out_of_order/lsu/load_store_unit.sv src/out_of_order/lsu/*.sv src/common/lsb_priority_encoder.sv
 
 clean:
 	rm -rf work transcript *.log *.wlf

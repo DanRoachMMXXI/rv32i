@@ -32,21 +32,18 @@ module order_failure_detector #(parameter XLEN=32, parameter LDQ_SIZE=32, parame
 		// 0: the value is just junk (probably 0 by default)
 		input logic stq_commit,
 		input logic [$clog2(STQ_SIZE)-1:0] stq_commit_index,
-		output logic [LDQ_SIZE-1:0] order_failures
+		output logic [LDQ_SIZE-1:0] order_failures,
+
+		// debug outputs
+		output logic [LDQ_SIZE-1:0] fwd_index_older_than_stq_commit_index
 	);
 
-	logic [LDQ_SIZE-1:0] fwd_index_older_than_stq_commit_index;	// LMAO
+	// logic [LDQ_SIZE-1:0] fwd_index_older_than_stq_commit_index;	// LMAO
 	integer i;
 
 	genvar generate_iterator;
 	generate
 		for (generate_iterator = 0; generate_iterator < LDQ_SIZE; generate_iterator = generate_iterator + 1) begin
-			// result = 0 if a is older than b,
-			// result = 1 if a is younger than b
-			// since we're using this output to determine if the
-			// forwarded index is older than the committing index,
-			// a must be the committing index and b must be the
-			// forwarded index.
 			age_comparator #(.N($clog2(STQ_SIZE))) age_comparator (
 				.head(stq_head),
 				.a(stq_commit_index),

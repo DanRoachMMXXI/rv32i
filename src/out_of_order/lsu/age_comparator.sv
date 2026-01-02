@@ -17,5 +17,5 @@ module age_comparator #(parameter N=32) (
 	assign diff_a = a - head;
 	assign diff_b = b - head;
 
-	assign result = diff_a < diff_b;
+	assign result = diff_a > diff_b;
 endmodule

@@ -5,8 +5,8 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	// I assume these will be set on the same cycle that the AGU
 	// reservation stations are reserved, so that it's guaranteed the
 	// buffer entries are already allocated once the address is computed
-	input logic alloc_ldq_entry,
-	input logic alloc_stq_entry,
+	input logic			alloc_ldq_entry,
+	input logic			alloc_stq_entry,
 	// rob_tag_in is stored in the buffer entry
 	// allocated by alloc_ldq_entry and alloc_stq_entry
 	input logic [ROB_TAG_WIDTH-1:0]	rob_tag_in,
@@ -30,36 +30,79 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	// these signals are what I AM ASSUMING come from memory to indicate
 	// a load succeeded.  something needs to tell the load queue that
 	// the load has succeeded so it can remove the entry from the queue.
-	input logic load_succeeded,
-	input logic [ROB_TAG_WIDTH-1:0] load_succeeded_rob_tag,
+	input logic			load_succeeded,
+	input logic [ROB_TAG_WIDTH-1:0]	load_succeeded_rob_tag,
 
 	// these signals are what I AM ASSUMING come from memory to indicate
 	// a store succeeded.  something needs to tell the store queue that
 	// the store has succeeded so it can remove the entry from the queue.
-	input logic store_succeeded,
-	input logic [ROB_TAG_WIDTH-1:0] store_succeeded_rob_tag,
+	input logic			store_succeeded,
+	input logic [ROB_TAG_WIDTH-1:0]	store_succeeded_rob_tag,
 
-	input logic cdb_active,
-	input logic [XLEN-1:0] cdb_data,
-	input logic [ROB_TAG_WIDTH-1:0] cdb_tag,
+	input logic			cdb_active,
+	input logic [XLEN-1:0]		cdb_data,
+	input logic [ROB_TAG_WIDTH-1:0]	cdb_tag,
+
+`ifdef DEBUG
+	// verification outputs
+	output logic [LDQ_SIZE-1:0]				ldq_valid,
+	output logic [LDQ_SIZE-1:0][XLEN-1:0]			ldq_address,
+	output logic [LDQ_SIZE-1:0]				ldq_address_valid,
+	output logic [LDQ_SIZE-1:0]				ldq_sleeping,
+	output logic [LDQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]		ldq_sleep_rob_tag,
+	output logic [LDQ_SIZE-1:0]				ldq_executed,
+	output logic [LDQ_SIZE-1:0]				ldq_succeeded,
+	output logic [LDQ_SIZE-1:0]				ldq_committed,
+	output logic [LDQ_SIZE-1:0]				ldq_order_fail,
+	output logic [LDQ_SIZE-1:0][STQ_SIZE-1:0]		ldq_store_mask,
+	output logic [LDQ_SIZE-1:0]				ldq_forwarded,
+	output logic [LDQ_SIZE-1:0][$clog2(STQ_SIZE)-1:0]	ldq_forward_stq_index,
+	output logic [LDQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]		ldq_rob_tag,
+
+	output logic [LDQ_SIZE-1:0]				ldq_rotated_valid,
+	output logic [LDQ_SIZE-1:0]				ldq_rotated_address_valid,
+	output logic [LDQ_SIZE-1:0]				ldq_rotated_sleeping,
+	output logic [LDQ_SIZE-1:0]				ldq_rotated_executed,
+
+	output logic [STQ_SIZE-1:0] stq_valid,		// is the ENTRY valid
+	output logic [STQ_SIZE-1:0] [XLEN-1:0] stq_address,
+	output logic [STQ_SIZE-1:0] stq_address_valid,
+	output logic [STQ_SIZE-1:0] [XLEN-1:0] stq_data,
+	output logic [STQ_SIZE-1:0] stq_data_valid,	// is the data for the store present in the entry?
+	output logic [STQ_SIZE-1:0] stq_committed,
+	output logic [STQ_SIZE-1:0] stq_executed,
+	output logic [STQ_SIZE-1:0] stq_succeeded,
+	output logic [STQ_SIZE-1:0] [ROB_TAG_WIDTH-1:0] stq_rob_tag,
+
+	output logic [STQ_SIZE-1:0] stq_rotated_valid,
+	output logic [STQ_SIZE-1:0] stq_rotated_address_valid,
+	output logic [STQ_SIZE-1:0] stq_rotated_data_valid,
+	output logic [STQ_SIZE-1:0] stq_rotated_committed,
+	output logic [STQ_SIZE-1:0] stq_rotated_executed,
+	output logic [STQ_SIZE-1:0] stq_rotated_succeeded,
+
+	output logic [$clog2(LDQ_SIZE)-1:0] ldq_head,
+	output logic [$clog2(STQ_SIZE)-1:0] stq_head,
+`endif
 
 	// I don't think an address needs to be associated with this, it's
 	// just whatever memory request is being put out to the L1 cache this
 	// clock cycle
-	output logic kill_mem_req,
+	output logic			kill_mem_req,
 	
 	// fire_memory_op: bool enabling issuing of memory operations
 	// with the memory_op_type, memory_address, and memory_data
-	// memory_op_type: 0 = load, 1 = store
+	// memory_op_type: 0 = load, 1 = store, 0 default if neither
 	// memory_address: address to be sent to memory, routed from
 	// the load queue or store queue
 	// memory_data: data to be sent to memory for stores
-	output logic		fire_memory_op,
-	output logic		memory_op_type,
-	output logic [XLEN-1:0]	memory_address,
-	output logic [XLEN-1:0]	memory_data
+	output logic			fire_memory_op,
+	output logic			memory_op_type,
+	output logic [XLEN-1:0]		memory_address,
+	output logic [XLEN-1:0]		memory_data
 	);
 
+`ifndef DEBUG
 	// load queue buffer signals
 	logic [LDQ_SIZE-1:0]				ldq_valid;
 	logic [LDQ_SIZE-1:0][XLEN-1:0]			ldq_address;
@@ -100,6 +143,7 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 
 	logic [$clog2(LDQ_SIZE)-1:0] ldq_head;
 	logic [$clog2(STQ_SIZE)-1:0] stq_head;
+`endif
 
 	// ldq_full - is the load queue full?
 	// produced by: load_queue
@@ -299,7 +343,10 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 		.stq_commit_index(),
 
 		// output
-		.order_failures(order_failures)
+		.order_failures(order_failures),
+		
+		// debug outputs
+		.fwd_index_older_than_stq_commit_index()
 	);
 
 	lsu_control #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) control (
@@ -312,6 +359,7 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 
 		// store queue signals
 		.stq_address(stq_address),
+		.stq_data(stq_data),
 		.stq_rotated_valid(stq_rotated_valid),
 		.stq_rotated_executed(stq_rotated_executed),
 		.stq_rotated_committed(stq_rotated_committed),

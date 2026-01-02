@@ -15,14 +15,14 @@
 * - handle flushing and reset the tail pointers on flushes
 */
 module lsu_control #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ_SIZE=32, parameter STQ_SIZE=32) (
-	input logic [LDQ_SIZE-1:0][XLEN-1:0]			ldq_address,
-	input logic [LDQ_SIZE-1:0]				ldq_rotated_valid,
-	input logic [LDQ_SIZE-1:0]				ldq_rotated_address_valid,
-	input logic [LDQ_SIZE-1:0]				ldq_rotated_sleeping,
-	input logic [LDQ_SIZE-1:0]				ldq_rotated_executed,
+	input logic [LDQ_SIZE-1:0][XLEN-1:0]	ldq_address,
+	input logic [LDQ_SIZE-1:0]		ldq_rotated_valid,
+	input logic [LDQ_SIZE-1:0]		ldq_rotated_address_valid,
+	input logic [LDQ_SIZE-1:0]		ldq_rotated_sleeping,
+	input logic [LDQ_SIZE-1:0]		ldq_rotated_executed,
 
-	// uncomment them as you need them
-	input logic [STQ_SIZE-1:0] [XLEN-1:0]	stq_address,
+	input logic [STQ_SIZE-1:0][XLEN-1:0]	stq_address,
+	input logic [STQ_SIZE-1:0][XLEN-1:0]	stq_data,
 	input logic [STQ_SIZE-1:0]		stq_rotated_valid,		// is the ENTRY valid
 	input logic [STQ_SIZE-1:0]		stq_rotated_executed,
 	input logic [STQ_SIZE-1:0]		stq_rotated_committed,
@@ -34,7 +34,7 @@ module lsu_control #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LD
 
 	// fire_memory_op: bool enabling issuing of memory operations
 	// with the memory_op_type, memory_address, and memory_data
-	// memory_op_type: 0 = load, 1 = store
+	// memory_op_type: 0 = load, 1 = store, default 0 if neither
 	// memory_address: address to be sent to memory, routed from
 	// the load queue or store queue
 	// memory_data: data to be sent to memory for stores
@@ -80,7 +80,7 @@ module lsu_control #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LD
 	logic can_fire_load;	// ;)
 
 	logic [STQ_SIZE-1:0] stq_ready_entries;
-	assign stq_ready_entries = stq_rotated_valid & stq_rotated_committed;	// TODO: what else might we need here?
+	assign stq_ready_entries = stq_rotated_valid & stq_rotated_committed & ~stq_rotated_executed;	// TODO: what else might we need here?
 	logic can_fire_store;
 
 	logic [$clog2(LDQ_SIZE)-1:0] ldq_oldest_ready_index_rotated;
@@ -110,11 +110,14 @@ module lsu_control #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LD
 	// to fire a store before a load is if the store queue is full.
 	assign load_fired = can_fire_load && !stq_full;
 	assign store_fired = !load_fired && can_fire_store;
-	assign memory_op_type = ~load_fired;		// memory_op_type != store_fired
 
-	assign memory_address = ({XLEN{~memory_op_type}} & ldq_address[ldq_oldest_ready_index])	// load address routing
-		| ({XLEN{memory_op_type}} & stq_address[stq_oldest_ready_index]);	// store address routing
-	assign memory_data = stq_address[stq_oldest_ready_index];
+	// the & (load | store) just makes it default to 0 if neither is being issued
+	assign memory_op_type = ~load_fired & (load_fired | store_fired);
+
+	assign memory_address = ({XLEN{load_fired}} & ldq_address[ldq_oldest_ready_index])	// load address routing
+		| ({XLEN{store_fired}} & stq_address[stq_oldest_ready_index]);	// store address routing
+	assign memory_data = stq_data[stq_oldest_ready_index];
+
 	// we can just assign load_fired_ldq_index and store_fired_index
 	// as nothing SHOULD use them if load_fired and store_fired are not set
 	assign load_fired_ldq_index = ldq_oldest_ready_index;

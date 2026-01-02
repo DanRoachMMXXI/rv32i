@@ -17,6 +17,10 @@
  *	- cancel the fired load operation
  *	- forward the data if it's available in the store buffer
  *	- sleep until the data is available if it isn't already available
+ *
+ * TODO: when forwarded is set, need to set succeeded as well, since it won't
+ * come from memory and the load has technically succeeded.  since the order
+ * failure detector checks the succeeded bit, this is important.
  */
 module load_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ_SIZE=32, parameter STQ_SIZE=32) (
 	input logic clk,

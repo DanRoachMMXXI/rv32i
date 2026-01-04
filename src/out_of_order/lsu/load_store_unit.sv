@@ -1,3 +1,4 @@
+// TODO: improve design to check order failures when stores COMMIT and not when they FIRE.
 module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ_SIZE=32, parameter STQ_SIZE=32) (
 	input logic clk,
 	input logic reset,
@@ -83,6 +84,15 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 
 	output logic [$clog2(LDQ_SIZE)-1:0] ldq_head,
 	output logic [$clog2(STQ_SIZE)-1:0] stq_head,
+
+	output logic				load_fired,
+	output logic [$clog2(LDQ_SIZE)-1:0]	load_fired_ldq_index,
+	output logic				load_fired_sleep,
+	output logic [ROB_TAG_WIDTH-1:0]	load_fired_sleep_rob_tag,
+	output logic				forward,
+	output logic [$clog2(STQ_SIZE)-1:0]	stq_forward_index,
+
+	output logic [LDQ_SIZE-1:0]		order_failures,
 `endif
 
 	// I don't think an address needs to be associated with this, it's
@@ -143,17 +153,6 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 
 	logic [$clog2(LDQ_SIZE)-1:0] ldq_head;
 	logic [$clog2(STQ_SIZE)-1:0] stq_head;
-`endif
-
-	// ldq_full - is the load queue full?
-	// produced by: load_queue
-	// consumed by: output
-	logic ldq_full;
-
-	// stq_full - is the store queue full?
-	// produced by: store_queue
-	// consumed by: lsu_control, output
-	logic stq_full;
 
 	// load_fired - is a load being fired this clock cycle?
 	// produced by: lsu_control
@@ -163,21 +162,6 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	// produced by: lsu_control
 	// consumed by: load_queue, load_store_dep_checker
 	logic [$clog2(LDQ_SIZE)-1:0] load_fired_ldq_index;
-
-	// store_fired - did the store queue just fire a store to memory?
-	// needed to clear bits in the store mask
-	// produced by: lsu_control
-	// consumed by: load_queue, store_queue
-	logic store_fired;
-	logic [$clog2(STQ_SIZE)-1:0] store_fired_index;
-
-	// order_failures - bitmask of load queue entries that have
-	// experienced an ordering failure with respect to the store that
-	// committed (TODO when?)
-	// produced by: order_failure_detector
-	// consumed by: load_queue
-	// TODO: this will need to store an exception in the ROB
-	logic [LDQ_SIZE-1:0] order_failures;
 
 	// load_fired_sleep - is the currently fired load being put to sleep?
 	// load_fired_sleep_rob_tag - the ROB tag for the store that put this
@@ -194,6 +178,32 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	// consumed by: load_queue
 	logic				forward;
 	logic [$clog2(STQ_SIZE)-1:0]	stq_forward_index;
+
+	// order_failures - bitmask of load queue entries that have
+	// experienced an ordering failure with respect to the store that
+	// committed (TODO when?)
+	// produced by: order_failure_detector
+	// consumed by: load_queue
+	// TODO: this will need to store an exception in the ROB
+	logic [LDQ_SIZE-1:0] order_failures;
+`endif
+
+	// ldq_full - is the load queue full?
+	// produced by: load_queue
+	// consumed by: output
+	logic ldq_full;
+
+	// stq_full - is the store queue full?
+	// produced by: store_queue
+	// consumed by: lsu_control, output
+	logic stq_full;
+
+	// store_fired - did the store queue just fire a store to memory?
+	// needed to clear bits in the store mask
+	// produced by: lsu_control
+	// consumed by: load_queue, store_queue
+	logic store_fired;
+	logic [$clog2(STQ_SIZE)-1:0] store_fired_index;
 
 	load_queue #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) ldq (
 		.clk(clk),
@@ -339,14 +349,14 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 		.stq_head(stq_head),
 		// comes from control logic, finds the index of the most
 		// recently committed store (should just be head?)
-		.stq_commit(),
-		.stq_commit_index(),
+		.store_fired(store_fired),
+		.store_fired_index(store_fired_index),
 
 		// output
 		.order_failures(order_failures),
 		
 		// debug outputs
-		.fwd_index_older_than_stq_commit_index()
+		.fwd_index_older_than_store_fired_index()
 	);
 
 	lsu_control #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) control (

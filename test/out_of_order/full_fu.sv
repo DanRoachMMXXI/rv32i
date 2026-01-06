@@ -8,27 +8,25 @@ module test_full_fu;
 	logic [31:0] v1_in;
 	logic [31:0] q2_in;
 	logic [31:0] v2_in;
-	logic [2:0] alu_op_in;
-	logic alu_sign_in;
+	control_signal_bus control_signal_bus_in;
 	logic [31:0] reorder_buffer_tag_in;
 	logic cdb_permit;	// this signal would come from an arbitration system
 
 	logic rs_reset;
 
-	logic cdb_active;
-	wire [31:0] cdb_tag;
+	logic cdb_valid;
+	wire [31:0] cdb_rob_tag;
 	wire [31:0] cdb_data;
 
 	logic tb_drive_cdb;	// the testbench drives the CDB, as though it were given access to do so by the CDB arbiter
 	logic [31:0] tb_cdb_data;
-	logic [31:0] tb_cdb_tag;
+	logic [31:0] tb_cdb_rob_tag;
 
 	logic [31:0] q1_out;
 	logic [31:0] v1_out;
 	logic [31:0] q2_out;
 	logic [31:0] v2_out;
-	logic [2:0] alu_op_out;
-	logic alu_sign_out;
+	control_signal_bus control_signal_bus_out;
 
 	logic [31:0] reorder_buffer_tag_out;
 	logic busy;
@@ -41,7 +39,7 @@ module test_full_fu;
 	logic output_buf_not_empty;
 
 	assign cdb_data = tb_drive_cdb ? tb_cdb_data : 'bZ;
-	assign cdb_tag = tb_drive_cdb ? tb_cdb_tag : 'bZ;
+	assign cdb_rob_tag = tb_drive_cdb ? tb_cdb_rob_tag : 'bZ;
 
 	reservation_station #(.XLEN(32), .TAG_WIDTH(32)) reservation_station (
 		.clk(clk),
@@ -52,41 +50,39 @@ module test_full_fu;
 		.v1_in(v1_in),
 		.q2_in(q2_in),
 		.v2_in(v2_in),
-		.alu_op_in(alu_op_in),
-		.alu_sign_in(alu_sign_in),
+		.control_signal_bus_in(control_signal_bus_in),
 		.reorder_buffer_tag_in(reorder_buffer_tag_in),
-		.cdb_active(cdb_active),
-		.cdb_tag(cdb_tag),
+		.cdb_valid(cdb_valid),
+		.cdb_rob_tag(cdb_rob_tag),
 		.cdb_data(cdb_data),
 		.q1_out(q1_out),
 		.v1_out(v1_out),
 		.q2_out(q2_out),
 		.v2_out(v2_out),
-		.alu_op_out(alu_op_out),
-		.alu_sign_out(alu_sign_out),
+		.control_signal_bus_out(control_signal_bus_out),
 		.reorder_buffer_tag_out(reorder_buffer_tag_out),
 		.busy(busy),
 		.ready_to_execute(ready_to_execute)
-		);
+	);
 
 	reservation_station_reset #(.TAG_WIDTH(32)) reservation_station_reset (
 		.global_reset(reset),
-		.data_bus_active(cdb_active),
-		.data_bus_tag(cdb_tag),
+		.bus_valid(cdb_valid),
+		.bus_rob_tag(cdb_rob_tag),
 		.rs_rob_tag(reorder_buffer_tag_out),
 		.reservation_station_reset(rs_reset)
-		);
+	);
 
 	alu_functional_unit #(.XLEN(32)) fu (
 		.a(v1_out),
 		.b(v2_out),
-		.op(alu_op_out),
-		.sign(alu_sign_out),
+		.op(control_signal_bus_out.alu_operation),
+		.sign(control_signal_bus_out.sign),
 		.result(fu_result),
 		.ready_to_execute(ready_to_execute),
 		.accept(fu_accept),
 		.write_to_buffer(fu_write_to_buf)
-		);
+	);
 
 	functional_unit_output_buffer #(.XLEN(32), .TAG_WIDTH(32)) output_buf (
 		.clk(clk),
@@ -97,10 +93,10 @@ module test_full_fu;
 		.not_empty(output_buf_not_empty),
 		.data_bus_permit(cdb_permit),
 		.data_bus_data(cdb_data),
-		.data_bus_tag(cdb_tag),
+		.data_bus_tag(cdb_rob_tag),
 		.read_from(),
 		.write_to()
-		);
+	);
 
 	// disable the active low reset after the first clock cycle
 	initial begin
@@ -117,81 +113,107 @@ module test_full_fu;
 		enable = 1;
 		q1_in = 10;
 		q2_in = 12;
-		alu_op_in = 0;		// addition
-		alu_sign_in = 0;
+		control_signal_bus_in.alu_operation = 0;		// addition
+		control_signal_bus_in.sign = 0;
 		reorder_buffer_tag_in = 19;
 		# 10
-		$display("An instruction has been issued to the reservation station.");
-		$display("Neither operand is currently present.  Verify that the instruction");
-		$display("has not been issued, the FU has not accepted, and nothing is in the");
-		$display("output buffer.");
-		display_signals();
+		// An instruction has been issued to the reservation station.
+		// Neither operand is currently present.  Verify that the
+		// instruction has not been issued, the FU has not accepted,
+		// and nothing is in the output buffer.
+		assert(q1_out == 10);
+		assert(v1_out == 0);
+		assert(q2_out == 12);
+		assert(v2_out == 0);
+		assert(reorder_buffer_tag_out == 19);
+
+		assert(busy == 1);
+		assert(ready_to_execute == 0);
+		assert(fu_accept == 0);
+		assert(output_buf_not_empty == 0);
 
 		enable = 0;
 		tb_drive_cdb = 1;
-		cdb_active = 1;
+		cdb_valid = 1;
 		tb_cdb_data = 24;
-		tb_cdb_tag = 10;
+		tb_cdb_rob_tag = 10;
 		# 10
-		$display("Operand 1 was present on the CDB, verify it is in the reservation");
-		$display("station, the instruction has not been issued, and that the output");
-		$display("buffer is empty");
-		display_signals();
+		// Operand 1 was present on the CDB, verify it is in the
+		// reservation station, the instruction has not been issued,
+		// and that the output buffer is empty
+		assert(q1_out == 0);
+		assert(v1_out == 24);
+		assert(q2_out == 12);
+		assert(v2_out == 0);
+
+		assert(busy == 1);
+		assert(ready_to_execute == 0);
+		assert(fu_accept == 0);
+		assert(output_buf_not_empty == 0);
 
 		tb_cdb_data = 17;
-		tb_cdb_tag = 12;
+		tb_cdb_rob_tag = 12;
 		# 10
 		$display("Operand 2 was present on the CDB, verify it is in the reservation");
 		$display("station and that ready_to_execute is set.  Since the FU is combinational,");
 		$display("the result should be computed and write_to_buffer should be set.");
 		$display("Also, the FU should set accept, and this should cause the reservation");
 		$display("station to clear ready_to_execute next cycle.");
-		display_signals();
+		assert(q1_out == 0);
+		assert(v1_out == 24);
+		assert(q2_out == 0);
+		assert(v2_out == 17);
+
+		assert(busy == 1);
+		assert(ready_to_execute == 1);
+		assert(fu_accept == 1);
+		assert(fu_write_to_buf == 1);
+		// the value will write to the buffer on the next clock edge
+		assert(output_buf_not_empty == 0);
 
 		// stop driving the CDB from the testbench
 		tb_drive_cdb = 0;
-		cdb_active = 0;
+		cdb_valid = 0;
 
 		# 10
-		$display("One clock cycle has passed.");
-		$display("No signals were changed beyond the testbench yielding control of the CDB.");
-		$display("Verify that the result from the previous clock cycle has been stored in the");
-		$display("output buffer, and that the output buffer has not_empty set.");
-		display_signals();
+		// One clock cycle has passed.
+		// No signals were changed beyond the testbench yielding
+		// control of the CDB. Verify that the result from the
+		// previous clock cycle has been stored in the output buffer,
+		// and that the output buffer has not_empty set.
+		assert(busy == 1);
+		assert(ready_to_execute == 0);	// should be 0 because the RS stores that it has already been dispatched
+		assert(fu_accept == 0);
+		assert(fu_write_to_buf == 0);
+		assert(output_buf_not_empty == 1);
 
 		cdb_permit = 1;	// permit the buffer to write to the CDB
-		cdb_active = 1;	// the arbiter would set this
+		cdb_valid = 1;	// the arbiter would set this
 		# 2
-		$display("A full clock cycle has NOT passed since the last signals were printed.");
-		$display("The output buffer has been permitted to write to the CDB, verify that the");
-		$display("result is present on the CDB, as well as the reorder buffer tag (%d).", reorder_buffer_tag_in);
-		display_signals();
+		// A full clock cycle has NOT passed since the last signals
+		// were printed. The output buffer has been permitted to write
+		// to the CDB, verify that the result is present on the CDB,
+		// as well as the reorder buffer tag (19)
+		assert(cdb_data == 41);
+		assert(cdb_rob_tag == 19);
 
 		# 8
-		$display("The rest of the clock cycle has passed.  Since the ROB tag appeared on the");
-		$display("CDB while the CDB was designated as active, verify that the reservation station");
-		$display("has had its signals reset.");
-		display_signals();
+		// The rest of the clock cycle has passed.  Since the ROB tag
+		// appeared on the CDB while the CDB was designated as active,
+		// verify that the reservation station has had its signals
+		// reset.
+		assert(q1_out == 0);
+		assert(v1_out == 0);
+		assert(q2_out == 0);
+		assert(v2_out == 0);
+		assert(reorder_buffer_tag_out == 0);
+
+		assert(busy == 0);
+		assert(ready_to_execute == 0);
+		assert(fu_accept == 0);
+		assert(output_buf_not_empty == 0);
+
+		$display("All assertions passed.");
 		$finish();
 	end
-
-	task display_signals();
-		$display("-------------------------------------------");
-		$display("RESERVATION STATION SIGNALS");
-		$display("q1_out: %d, v1_out: %d", q1_out, v1_out);
-		$display("q2_out: %d, v2_out: %d", q2_out, v2_out);
-		$display("alu_op_out: %d, alu_sign_out: %d", alu_op_out, alu_sign_out);
-		$display("busy: %d, ready_to_execute: %d", busy, ready_to_execute);
-
-		$display("-------------------------------------------");
-		$display("FUNCTIONAL UNIT SIGNALS");
-		$display("accept: %d, result: %d", fu_accept, fu_result);
-		$display("write_to_buffer: %d", fu_write_to_buf);
-
-		$display("-------------------------------------------");
-		$display("OUTPUT BUFFER SIGNALS");
-		$display("not_empty: %d", output_buf_not_empty);
-		$display("cdb_data: %d, cdb_tag: %d", cdb_data, cdb_tag);
-		$display("===========================================");
-	endtask
 endmodule

@@ -13,8 +13,8 @@ module test_reservation_station;
 
 	logic [31:0] reorder_buffer_tag_in;
 
-	logic cdb_active;
-	logic [31:0] cdb_tag;
+	logic cdb_valid;
+	logic [31:0] cdb_rob_tag;
 	logic [31:0] cdb_data;
 
 	logic [31:0] q1_out;
@@ -40,8 +40,8 @@ module test_reservation_station;
 		.alu_op_in(alu_op_in),
 		.alu_sign_in(alu_sign_in),
 		.reorder_buffer_tag_in(reorder_buffer_tag_in),
-		.cdb_active(cdb_active),
-		.cdb_tag(cdb_tag),
+		.cdb_valid(cdb_valid),
+		.cdb_rob_tag(cdb_rob_tag),
 		.cdb_data(cdb_data),
 		.q1_out(q1_out),
 		.v1_out(v1_out),
@@ -81,28 +81,28 @@ module test_reservation_station;
 		display_signals();
 
 		enable = 0;
-		cdb_tag = 2;
+		cdb_rob_tag = 2;
 		cdb_data = 4;
-		cdb_active = 0;
+		cdb_valid = 0;
 		# 10	// allow a clock cycle to pass
 		$display("a value is on the CDB, but it is not yet active, so it should");
 		$display("not be accepted by the reservation station.  all signals should");
 		$display("be the same as the previous.");
 		display_signals();
 
-		cdb_active = 1;
+		cdb_valid = 1;
 		# 10
-		$display("the CDB has been flagged as active, so the cdb_tag should match q2,");
+		$display("the CDB has been flagged as active, so the cdb_rob_tag should match q2,");
 		$display("and v2 should get its value from cdb_data.  Verify that q2_out = 0");
 		$display("and v2_out = 4.");
 		display_signals();
 
-		cdb_tag = 3;
+		cdb_rob_tag = 3;
 		# 10;
 		$display("the CDB tag does not match q1, no signals should have changed.");
 		display_signals();
 
-		cdb_tag = 1;
+		cdb_rob_tag = 1;
 		cdb_data = 19;
 		# 10
 		$display("q1 has appeared on the CDB, and the CDB is active.  Verify that");
@@ -129,15 +129,15 @@ module test_reservation_station;
 		display_signals();
 
 		cdb_data = 25;
-		cdb_tag = 7;
+		cdb_rob_tag = 7;
 		# 10
 		$display("The value stored in reorder_buffer_tag_out has appeared on the CDB.");
 		$display("Verify that all signals in the reservation station have been reset.");
 		display_signals();
 
-		cdb_tag = 4;
+		cdb_rob_tag = 4;
 		cdb_data = 81;
-		cdb_active = 1;
+		cdb_valid = 1;
 		q1_in = 3;
 		q2_in = 4;
 		reorder_buffer_tag_in = 19;

@@ -143,8 +143,10 @@ instruction_decode id:
 	# opcode constant package
 	$(VLOG) test/opcode.sv
 
+	$(VLOG) src/common/control_signal_bus.sv 
+
 	# DUT and interface
-	$(VLOG) $(UVM_INCDIR) $(INSTRUCTION_DECODE_TEST_INCDIR) src/instruction_decode.sv test/instruction_decode/instruction_decode_if.sv
+	$(VLOG) $(UVM_INCDIR) $(INSTRUCTION_DECODE_TEST_INCDIR) src/common/instruction_decode.sv test/instruction_decode/instruction_decode_if.sv
 
 	# instruction decode UVM package
 	$(VLOG) $(UVM_INCDIR) $(INSTRUCTION_DECODE_TEST_INCDIR) test/instruction_decode/instruction_decode_pkg.sv
@@ -213,6 +215,9 @@ lsu_control:
 
 lsu load_store_unit:
 	verilator --binary -j 0 +define+DEBUG test/out_of_order/lsu/load_store_unit.sv src/out_of_order/lsu/*.sv src/common/lsb_priority_encoder.sv
+
+instruction_route ir:
+	verilator --binary -j 0 --top-module test_instruction_route test/out_of_order/instruction_route.sv src/out_of_order/instruction_route.sv src/common/fixed_priority_arbiter.sv
 
 clean:
 	rm -rf work transcript *.log *.wlf

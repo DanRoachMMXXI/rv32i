@@ -45,7 +45,7 @@ interface reorder_buffer_entry #(parameter XLEN);
 	logic [XLEN-1:0] destination;
 	logic [XLEN-1:0] value;
 	logic ready;
-	// eventually I'll need exceptions
+	logic exception;
 endinterface
 
 module reorder_buffer #(
@@ -77,11 +77,11 @@ module reorder_buffer #(
 	input logic [XLEN-1:0] cdb_data,
 	input logic [TAG_WIDTH-1:0] cdb_tag,
 
-	// memory address bus - a separate bus where the address FU sends
+	// memory address bus - a separate bus where the AGU sends
 	// addresses to the ROB for STORES ONLY
-	input logic memory_addr_bus_active,
-	input logic [XLEN-1:0] memory_addr_bus_data,	// the address
-	input logic [XLEN-1:0] memory_addr_bus_tag,
+	input logic agu_address_valid,
+	input logic [XLEN-1:0] agu_address_data,	// the address
+	input logic [XLEN-1:0] agu_address_rob_tag,
 
 	// the buffer itself
 	// assuming this will be an output since a few things will need to be
@@ -91,7 +91,13 @@ module reorder_buffer #(
 	// - when instructions are issued, the ROB needs to be referenced to
 	// get the value or the tag/index that it will be broadcast to the CDB
 	// with
-	output reorder_buffer_entry [BUF_SIZE-1:0] buffer
+	output logic [BUF_SIZE-1:0]		rob_valid,
+	output logic [BUF_SIZE-1:0][1:0]	rob_instruction_type,
+	output logic [BUF_SIZE-1:0]		rob_address_valid,	// for stores only
+	output logic [BUF_SIZE-1:0][XLEN-1:0]	rob_destination,
+	output logic [BUF_SIZE-1:0][XLEN-1:0]	rob_value,
+	output logic [BUF_SIZE-1:0]		rob_data_ready,
+	output logic [BUF_SIZE-1:0]		rob_exception
 	);
 
 	integer i;	// used to reset all buffer entries
@@ -108,49 +114,56 @@ module reorder_buffer #(
 			// reset buffer contents
 			// I think the only thing that matters is valid = 0
 			for (i = 0; i < BUF_SIZE; i = i + 1) begin
-				buffer[i].valid <= 0;
-				buffer[i].instruction_type <= 0;
-				buffer[i].destination <= 0;
-				buffer[i].value <= 0;
-				buffer[i].ready <= 0;
-				// TODO reset exceptions
+				clear_entry(i);
 			end
 		end else begin
-			// TODO: need to figure out how to know that both the value AND
-			// address are ready for stores, it can't just be on the event of the
-			// CDB or the memory address bus alone as they can probably come in
-			// either order.
 
 			// store a new instruction in the buffer
 			if (input_en) begin
-				buffer[write_to].valid <= 1;
-				buffer[write_to].instruction_type <= instruction_type_in;
-				buffer[write_to].destination <= destination_in;
-				buffer[write_to].value <= value_in;
-				buffer[write_to].ready <= ready_in;
+				rob_valid[write_to] <= 1;
+				rob_instruction_type[write_to] <= instruction_type_in;
+				rob_destination[write_to] <= destination_in;
+				rob_value[write_to] <= value_in;
+				rob_ready[write_to] <= ready_in;
 			end
 
 			// read a value off the CDB
 			if (cdb_active) begin
-				buffer[cdb_tag].value <= cdb_data;
-				buffer[cdb_tag].ready <= 1;
+				rob_value[cdb_tag] <= cdb_data;
+				rob_data_ready[cdb_tag] <= 1;
 			end
 
 			// read an address off the memory address bus
-			if (memory_addr_bus_active) begin
+			if (agu_address_valid && rob_instruction_type[agu_address_rob_tag] == /* store */) begin
 				// TODO: can't just have an "active" like the CDB, it needs to be
 				// targeted for the ROB OR only update store instructions.  Load
 				// instructions use the destination field of the ROB entry for the
 				// target register, so we don't want to overwrite that with the
 				// address to be loaded - that's stored in the load buffer.
-				buffer[memory_addr_bus_tag].destination <= memory_addr_bus_data;
+				rob_address_valid <= 1;
+				rob_destination[agu_address_rob_tag] <= agu_address_data;
 			end
 
 			// instruction commit
-			if (buffer[read_from].ready) begin
+			// if the instruction is a store, data_ready and
+			// address_valid both need to be set, else just
+			// data_ready
+			if (rob_data_ready[read_from] && (rob_instruction_type[read_from] != /* store */ || rob_address_valid == 1)) begin
 				// TODO commit logic
+				// be sure to consider rob_address_valid for
+				// store commits
 				read_from <= read_from + 1;
 			end
 		end
 	end
+
+	function void clear_entry(integer index);
+		rob_valid[i] <= 0;
+		rob_instruction_type[i] <= 0;
+		rob_address_valid[i] <= 0;
+		rob_destination[i] <= 0;
+		rob_value[i] = 0;
+		rob_data_ready[i] = 0;
+		rob_exception[i] = 0;
+	endfunction
 endmodule

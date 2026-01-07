@@ -5,30 +5,39 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	input logic enable,
 	input logic dispatched_in,	// response from FU that instruction has begun execution
 
-	/*
-	 * using terminology from Hennessy & Patterson book
-	 * q = tag, v = value
-	 */
-	input logic [TAG_WIDTH-1:0] q1_in,
-	input logic [XLEN-1:0] v1_in,
-	input logic [TAG_WIDTH-1:0] q2_in,
-	input logic [XLEN-1:0] v2_in,
-	input control_signal_bus control_signal_bus_in,
-	input logic [TAG_WIDTH-1:0] reorder_buffer_tag_in,
+	// using terminology from Hennessy & Patterson book
+	// q = tag, v = value
+	input logic [TAG_WIDTH-1:0]	q1_in,
+	input logic [XLEN-1:0]		v1_in,
+	input logic [TAG_WIDTH-1:0]	q2_in,
+	input logic [XLEN-1:0]		v2_in,
+	input control_signal_bus	control_signal_bus_in,
+	input logic [TAG_WIDTH-1:0]	reorder_buffer_tag_in,
 
-	input logic cdb_valid,
-	input wire [TAG_WIDTH-1:0] cdb_rob_tag,
-	input wire [XLEN-1:0] cdb_data,
+	// need to store these to execute branches
+	// they should be optimized away during synthesis for the other
+	// functional units that aren't using them
+	input logic [XLEN-1:0]		pc_plus_four_in,
+	input logic [XLEN-1:0]		predicted_next_instruction_in,
+	input logic			branch_prediction_in,
 
-	output logic [TAG_WIDTH-1:0] q1_out,
-	output logic [XLEN-1:0] v1_out,
-	output logic [TAG_WIDTH-1:0] q2_out,
-	output logic [XLEN-1:0] v2_out,
-	output control_signal_bus control_signal_bus_out,
-	output logic [TAG_WIDTH-1:0] reorder_buffer_tag_out,
+	input logic			cdb_valid,
+	input wire [TAG_WIDTH-1:0]	cdb_rob_tag,
+	input wire [XLEN-1:0]		cdb_data,
 
-	output logic busy,
-	output logic ready_to_execute
+	output logic [TAG_WIDTH-1:0]	q1_out,
+	output logic [XLEN-1:0]		v1_out,
+	output logic [TAG_WIDTH-1:0]	q2_out,
+	output logic [XLEN-1:0]		v2_out,
+	output control_signal_bus	control_signal_bus_out,
+	output logic [TAG_WIDTH-1:0]	reorder_buffer_tag_out,
+
+	output logic [XLEN-1:0]		pc_plus_four_out,
+	output logic [XLEN-1:0]		predicted_next_instruction_out,
+	output logic			branch_prediction_out,
+
+	output logic			busy,
+	output logic			ready_to_execute
 	);
 
 	logic dispatched;	// FF to track that the instruction has been accepted by the FU
@@ -60,6 +69,9 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 			reorder_buffer_tag_out <= 0;
 			busy <= 0;
 			dispatched <= 0;
+			pc_plus_four_out <= 0;
+			predicted_next_instruction_out <= 0;
+			branch_prediction_out <= 0;
 		end else begin
 			// store 0 if the tag matched the cdb tag, else store
 			// input if enable, else retain previous tag
@@ -82,7 +94,10 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 			if (enable) begin
 				reorder_buffer_tag_out <= reorder_buffer_tag_in;
 				control_signal_bus_out <= control_signal_bus_in;
-				busy <= 1;	// busy because it has read in an instruction!
+				pc_plus_four_out <= pc_plus_four_in;
+				predicted_next_instruction_out <= predicted_next_instruction_in;
+				branch_prediction_out <= branch_prediction_in;
+				busy <= 1;	// busy because it has stored an instruction!
 			end
 		end
 	end

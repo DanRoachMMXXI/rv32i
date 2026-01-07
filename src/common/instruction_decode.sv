@@ -9,13 +9,12 @@ module immediate_decode #(parameter XLEN=32) (
 
 	// Immediate value computation and assignment
 	// Page 27
-	/* verilator lint_off WIDTHTRUNC */
 	always_comb
 		case (opcode)
 			'b0010011, 'b0000011, 'b1100111:	// I_TYPE
 				immediate = {
 					{XLEN{instruction[31]}}, instruction[31:20]
-				};
+				}[XLEN-1:0];
 			'b1100011:	// B_TYPE
 				immediate = {
 					{XLEN{instruction[31]}},
@@ -24,13 +23,13 @@ module immediate_decode #(parameter XLEN=32) (
 					instruction[30:25],
 					instruction[11:8],
 					1'b0
-				};
+				}[XLEN-1:0];
 			'b0100011:	// S_TYPE
 				immediate = {
 					{XLEN{instruction[31]}},
 					instruction[31:25],
 					instruction[11:7]
-				};
+				}[XLEN-1:0];
 			'b1101111:	// J type
 				immediate = {
 					{XLEN{instruction[31]}},
@@ -39,7 +38,7 @@ module immediate_decode #(parameter XLEN=32) (
 					instruction[11],
 					instruction[19:12],
 					1'b0
-				};
+				}[XLEN-1:0];
 			'b0110111, 'b0010111:	// U type
 				immediate = {
 					instruction[31:12],
@@ -48,7 +47,6 @@ module immediate_decode #(parameter XLEN=32) (
 			default:
 				immediate = 0;
 		endcase
-	/* verilator lint_on WIDTHTRUNC */
 endmodule
 
 module branch_decode (
@@ -92,7 +90,7 @@ module alu_decode (
 	// ALU operation and sign
 	always_comb
 		if (opcode == 'b1100011)	// B_TYPE
-			case (funct3)
+			unique case (funct3)
 				'b000, 'b001:	// beq and bne
 				begin
 					alu_operation = 'b000;
@@ -108,13 +106,6 @@ module alu_decode (
 				'b110, 'b111:	// bltu and bgeu
 				begin
 					alu_operation = 'b011;
-					sign = 0;
-				end
-
-				default:	// illegal instruction
-						// TODO: fault
-				begin
-					alu_operation = 'b000;
 					sign = 0;
 				end
 			endcase
@@ -168,6 +159,30 @@ module alu_decode (
 			default:	// ALU unused or illegal instruction
 				op2_src = 0;
 		endcase
+endmodule
+
+module out_of_order_decode (
+	input logic [6:0] opcode,
+	output logic [1:0] instruction_type
+	);
+
+	always_comb begin
+		unique case (opcode)
+			'b0110011,	// R_TYPE
+			'b0010011,	// I_TYPE_ALU
+			'b0110111,	// LUI
+			'b0010111:	// AUIPC
+				instruction_type = 'b00;	// ALU
+			'b1100111,	// I_TYPE_JALR
+			'b1100011,	// B_TYPE
+			'b1101111:	// J_TYPE
+				instruction_type = 'b01;	// branch
+			'b0000011:	// I_TYPE_LOAD
+				instruction_type = 'b10;	// load
+			'b0100011:	// S_TYPE
+				instruction_type = 'b11;	// store
+		endcase
+	end
 endmodule
 
 module instruction_decode #(parameter XLEN=32) (
@@ -245,4 +260,9 @@ module instruction_decode #(parameter XLEN=32) (
 				control_signals.rf_write_en = 0;
 		endcase
 	assign control_signals.mem_write_en = (opcode == 'b0100011) ? 1 : 0;	// S_TYPE
+
+	out_of_order_decode ooo_decode (
+		.opcode(opcode),
+		.instruction_type(control_signals.instruction_type)
+	);
 endmodule

@@ -52,6 +52,9 @@ module test_full_fu;
 		.v2_in(v2_in),
 		.control_signal_bus_in(control_signal_bus_in),
 		.reorder_buffer_tag_in(reorder_buffer_tag_in),
+		.pc_plus_four_in(),
+		.predicted_next_instruction_in(),
+		.branch_prediction_in(),
 		.cdb_valid(cdb_valid),
 		.cdb_rob_tag(cdb_rob_tag),
 		.cdb_data(cdb_data),
@@ -61,6 +64,9 @@ module test_full_fu;
 		.v2_out(v2_out),
 		.control_signal_bus_out(control_signal_bus_out),
 		.reorder_buffer_tag_out(reorder_buffer_tag_out),
+		.pc_plus_four_out(),
+		.predicted_next_instruction_out(),
+		.branch_prediction_out(),
 		.busy(busy),
 		.ready_to_execute(ready_to_execute)
 	);

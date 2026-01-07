@@ -4,6 +4,8 @@
  * blocks modify different signals of the struct
  * https://github.com/verilator/verilator/issues/4226
  * For my use case, packing the structure is a viable workaround.
+ * In fact, this has proven convenient in clearing the entire control signal
+ * bus, as you can just assign 0 to it.
  */
 typedef struct packed {
 	// register indices
@@ -47,4 +49,14 @@ typedef struct packed {
 	// signals to write back to register file or memory
 	logic rf_write_en;
 	logic mem_write_en;
+
+	// out of order signals
+	// instruction_type: tracks the "OOO type" of instruction being
+	// executed to route it to the correct FU and for use by the ROB to
+	// know how/where to commit the instruction
+	// 00 - ALU
+	// 01 - branch
+	// 10 - load
+	// 11 - store
+	logic [1:0] instruction_type;
 } control_signal_bus;

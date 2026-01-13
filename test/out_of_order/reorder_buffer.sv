@@ -4,6 +4,8 @@ module test_reorder_buffer;
 	localparam XLEN = 32;
 	localparam ROB_TAG_WIDTH = 4;
 	localparam ROB_BUF_SIZE = 16;
+	localparam LDQ_SIZE = 16;
+	localparam STQ_SIZE = 16;
 
 	logic clk;
 	logic reset;
@@ -13,22 +15,23 @@ module test_reorder_buffer;
 	logic [XLEN-1:0] destination_in;
 	logic [XLEN-1:0] value_in;
 	logic data_ready_in;
-	logic [XLEN-1:0] next_instruction_in;
+	logic [XLEN-1:0] pc_in;
 	logic				cdb_valid;
 	logic [XLEN-1:0]		cdb_data;
 	logic [ROB_TAG_WIDTH-1:0]	cdb_rob_tag;
 	logic				cdb_exception;
+	logic				branch_mispredict;
 	logic agu_address_valid;
-	logic [XLEN-1:0] agu_address_data;
-	logic [XLEN-1:0] agu_address_rob_tag;
+	logic [XLEN-1:0] agu_address_data; logic [XLEN-1:0] agu_address_rob_tag;
 	logic [ROB_BUF_SIZE-1:0]		flush;
-	logic [ROB_TAG_WIDTH-1:0]		new_tail;
+	logic [ROB_TAG_WIDTH-1:0]		rob_new_tail;
 	logic [ROB_BUF_SIZE-1:0]		rob_valid;
-	logic [ROB_BUF_SIZE-1:0][1:0]	rob_instruction_type;
+	logic [ROB_BUF_SIZE-1:0][1:0]		rob_instruction_type;
 	logic [ROB_BUF_SIZE-1:0]		rob_address_valid;
 	logic [ROB_BUF_SIZE-1:0][XLEN-1:0]	rob_destination;
 	logic [ROB_BUF_SIZE-1:0][XLEN-1:0]	rob_value;
 	logic [ROB_BUF_SIZE-1:0]		rob_data_ready;
+	logic [ROB_BUF_SIZE-1:0]		rob_branch_mispredict;
 	logic [ROB_BUF_SIZE-1:0]		rob_exception;
 	logic [ROB_BUF_SIZE-1:0][XLEN-1:0]	rob_next_instruction;
 	logic [ROB_TAG_WIDTH-1:0] head;
@@ -40,16 +43,19 @@ module test_reorder_buffer;
 	logic [XLEN-1:0] tb_cdb_data;
 	logic [ROB_TAG_WIDTH-1:0] tb_cdb_rob_tag;
 	logic tb_cdb_exception;
+	logic tb_branch_mispredict;
 
 	always_comb
 		if (tb_drive_cdb) begin
 			cdb_data = tb_cdb_data;
 			cdb_rob_tag = tb_cdb_rob_tag;
 			cdb_exception = tb_cdb_exception;
+			branch_mispredict = tb_branch_mispredict;
 		end else begin
 			cdb_data = 'bZ;
 			cdb_rob_tag = 4'bZ;
 			cdb_exception = 1'bZ;
+			branch_mispredict = 1'bZ;
 		end
 
 
@@ -61,22 +67,24 @@ module test_reorder_buffer;
 		.destination_in(destination_in),
 		.value_in(value_in),
 		.data_ready_in(data_ready_in),
-		.next_instruction_in(next_instruction_in),
+		.pc_in(pc_in),
 		.cdb_valid(cdb_valid),
 		.cdb_data(cdb_data),
 		.cdb_rob_tag(cdb_rob_tag),
 		.cdb_exception(cdb_exception),
+		.branch_mispredict(),
 		.agu_address_valid(agu_address_valid),
 		.agu_address_data(agu_address_data),
 		.agu_address_rob_tag(agu_address_rob_tag),
 		.flush(flush),
-		.new_tail(new_tail),
+		.new_tail(rob_new_tail),
 		.rob_valid(rob_valid),
 		.rob_instruction_type(rob_instruction_type),
 		.rob_address_valid(rob_address_valid),
 		.rob_destination(rob_destination),
 		.rob_value(rob_value),
 		.rob_data_ready(rob_data_ready),
+		.rob_branch_mispredict(rob_branch_mispredict),
 		.rob_exception(rob_exception),
 		.rob_next_instruction(rob_next_instruction),
 		.head(head),
@@ -85,13 +93,22 @@ module test_reorder_buffer;
 		.full(full)
 	);
 
-	rob_exception_handler #(.BUF_SIZE(ROB_BUF_SIZE), .TAG_WIDTH(ROB_TAG_WIDTH)) rob_exception_handler (
+	buffer_flusher #(.BUF_SIZE(ROB_BUF_SIZE), .TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) buffer_flusher (
+		.rob_branch_mispredict(rob_branch_mispredict),
 		.rob_exception(rob_exception),
 		.rob_head(head),
 		.rob_tail(tail),
+		.ldq_valid(),
+		.ldq_rob_tag(),
+		.stq_valid(),
+		.stq_rob_tag(),
 
 		.flush(flush),
-		.new_tail(new_tail)
+		.rob_new_tail(rob_new_tail),
+		.flush_ldq(),
+		.ldq_new_tail(),
+		.flush_stq(),
+		.stq_new_tail()
 	);
 
 	// disable the active low reset after the first clock cycle
@@ -167,7 +184,7 @@ module test_reorder_buffer;
 		destination_in = 0;
 		value_in = 0;
 		data_ready_in = 0;
-		next_instruction_in = 20;
+		pc_in = 20;
 		# 10
 		assert(rob_valid == 'h0006);
 		assert(commit == 1);	// so this entry should be cleared next cycle
@@ -177,7 +194,7 @@ module test_reorder_buffer;
 		// allocating a STORE to test address stuff for commit
 		// no destination or data
 		instruction_type_in = STORE;
-		next_instruction_in = 24;
+		pc_in = 24;
 		# 10
 		assert(rob_valid == 'h000C);
 		assert(commit == 0);
@@ -260,9 +277,9 @@ module test_reorder_buffer;
 		drive_cdb(0, 6, 1);
 		# 10
 		release_cdb();
-		assert(flush == 'h0380);
+		assert(flush == 'h03C0);	// the flush signal should include the excepting instruction since it will need to be retried
 		# 10
-		assert(rob_valid == 'h0070);
+		assert(rob_valid == 'h0030);
 
 		$display("All assertions passed.");
 		$finish();

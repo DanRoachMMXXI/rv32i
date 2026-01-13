@@ -116,6 +116,8 @@ endmodule
  *   stores don't put a value on the CDB)
  * - the address FU doesn't need to wait for the load or store to complete:
  *   that's handled by the ROB and load/store queues
+ * - TODO: take in flush signal from ROB and reset the RS if flush[rs_rob_tag]
+ *   is set.
  */
 module reservation_station_reset #(parameter TAG_WIDTH=32) (
 	input logic global_reset,			// ACTIVE LOW

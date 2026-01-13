@@ -1,3 +1,5 @@
+// TODO: READ THE SECTION ON RETURN ADDRESS STACKS ON PG 31 AND 32 OF THE
+// RISCV UNPRIVILEGED ISA.  IT HAS GOOD INFO ON WHEN TO PUSH/POP.
 module return_address_stack #(parameter XLEN=32, parameter STACK_SIZE=16) (
 	input logic clk,
 	input logic reset,

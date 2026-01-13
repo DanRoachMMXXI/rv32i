@@ -35,8 +35,8 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter ST
 
 	// CDB signals so we can read the store value for forwarding
 	input logic cdb_active,
-	input logic [XLEN-1:0] cdb_data,
-	input logic [ROB_TAG_WIDTH-1:0] cdb_tag,
+	input wire [XLEN-1:0] cdb_data,
+	input wire [ROB_TAG_WIDTH-1:0] cdb_tag,
 	
 	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 	// IF YOU ADD AN ENTRY HERE, PLEASE REMEMBER TO CLEAR IT IN THE

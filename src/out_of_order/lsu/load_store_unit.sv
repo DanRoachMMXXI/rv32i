@@ -41,8 +41,8 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	input logic [ROB_TAG_WIDTH-1:0]	store_succeeded_rob_tag,
 
 	input logic			cdb_active,
-	input logic [XLEN-1:0]		cdb_data,
-	input logic [ROB_TAG_WIDTH-1:0]	cdb_tag,
+	input wire [XLEN-1:0]		cdb_data,
+	input wire [ROB_TAG_WIDTH-1:0]	cdb_tag,
 
 `ifdef DEBUG
 	// verification outputs

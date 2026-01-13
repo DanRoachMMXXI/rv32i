@@ -44,7 +44,7 @@ module load_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ
 
 	// CDB signals so we can identify when a sleeping load can be retried
 	input logic cdb_active,
-	input logic [ROB_TAG_WIDTH-1:0] cdb_tag,
+	input wire [ROB_TAG_WIDTH-1:0] cdb_tag,
 
 	// signals for a load is going through the execute stage
 	// load_fired: is a load being fired this cycle?

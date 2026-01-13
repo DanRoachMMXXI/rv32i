@@ -1,59 +1,64 @@
 module test_full_branch_fu;
 	localparam XLEN = 32;
 	localparam ROB_TAG_WIDTH = 32;
+	localparam N_ALU_RS = 1;
+	localparam N_AGU_RS = 1;
+	localparam N_BRANCH_RS = 1;
 
 	logic clk = 0;
 	logic reset = 0;
 
 	// decode signals
-	logic [31:0] instruction;
-	control_signal_bus control_signals_in;	// goes to route and RS
+	logic [31:0]			instruction;
+	logic [XLEN-1:0]		immediate;
+	control_signal_bus		control_signals_in;	// goes to route and RS
 
 	// route signals
-	logic rs_enable;	// goes to enable of RS
-	logic stall;
+	logic				rs_enable;	// goes to enable of RS
+	logic				stall;
 
 	// reservation station signals
-	logic [ROB_TAG_WIDTH-1:0] q1_in;
-	logic [XLEN-1:0] v1_in;
-	logic [ROB_TAG_WIDTH-1:0] q2_in;
-	logic [XLEN-1:0] v2_in;
-	logic [ROB_TAG_WIDTH-1:0] reorder_buffer_tag_in;
-	logic cdb_permit;	// this signal would come from an arbitration system
+	logic [ROB_TAG_WIDTH-1:0]	q1_in;
+	logic [XLEN-1:0]		v1_in;
+	logic [ROB_TAG_WIDTH-1:0]	q2_in;
+	logic [XLEN-1:0]		v2_in;
+	logic [ROB_TAG_WIDTH-1:0]	reorder_buffer_tag_in;
+	logic				cdb_permit;	// this signal would come from an arbitration system
 
-	logic rs_reset;
+	logic				rs_reset;
 
-	logic [XLEN-1:0] pc_plus_four_in;
-	logic [XLEN-1:0] predicted_next_instruction_in;
-	logic branch_prediction_in;
+	logic [XLEN-1:0]		pc_plus_four_in;
+	logic [XLEN-1:0]		predicted_next_instruction_in;
+	logic				branch_prediction_in;
 
-	logic cdb_valid;
-	wire [ROB_TAG_WIDTH:0] cdb_rob_tag;
-	wire [XLEN-1:0] cdb_data;
+	logic				cdb_valid;
+	wire [XLEN-1:0]			cdb_data;
+	wire [ROB_TAG_WIDTH-1:0]	cdb_rob_tag;
 
-	logic tb_drive_cdb;	// the testbench drives the CDB, as though it were given access to do so by the CDB arbiter
-	logic [XLEN-1:0] tb_cdb_data;
-	logic [ROB_TAG_WIDTH-1:0] tb_cdb_rob_tag;
+	logic				tb_drive_cdb;	// the testbench drives the CDB, as though it were given access to do so by the CDB arbiter
+	logic [XLEN-1:0]		tb_cdb_data;
+	logic [ROB_TAG_WIDTH-1:0]	tb_cdb_rob_tag;
 
-	logic [ROB_TAG_WIDTH-1:0] q1_out;
-	logic [XLEN-1:0] v1_out;
-	logic [ROB_TAG_WIDTH-1:0] q2_out;
-	logic [XLEN-1:0] v2_out;
-	control_signal_bus control_signals_out;
+	logic [ROB_TAG_WIDTH-1:0]	q1_out;
+	logic [XLEN-1:0]		v1_out;
+	logic [ROB_TAG_WIDTH-1:0]	q2_out;
+	logic [XLEN-1:0]		v2_out;
+	control_signal_bus		control_signals_out;
 
-	logic [XLEN-1:0] pc_plus_four_out;
-	logic [XLEN-1:0] predicted_next_instruction_out;
-	logic branch_prediction_out;
+	logic [XLEN-1:0]		pc_plus_four_out;
+	logic [XLEN-1:0]		predicted_next_instruction_out;
+	logic				branch_prediction_out;
 
-	logic [ROB_TAG_WIDTH-1:0] reorder_buffer_tag_out;
-	logic busy;
-	logic ready_to_execute;
+	logic [ROB_TAG_WIDTH-1:0]	reorder_buffer_tag_out;
+	logic				busy;
+	logic				ready_to_execute;
 
-	logic [XLEN-1:0] fu_result;
-	logic accept;
-	logic write_to_buffer;
+	logic [XLEN-1:0]		next_instruction;
+	logic				branch_mispredicted;
+	logic				accept;
+	logic				write_to_buffer;
 
-	logic output_buf_not_empty;
+	logic				output_buf_not_empty;
 
 	assign cdb_data = tb_drive_cdb ? tb_cdb_data : 'bZ;
 	assign cdb_rob_tag = tb_drive_cdb ? tb_cdb_rob_tag : 'bZ;
@@ -64,7 +69,7 @@ module test_full_branch_fu;
 		.control_signals(control_signals_in)
 	);
 
-	instruction_route #(.N_ALU_RS(1), .N_AGU_RS(1), .N_BRANCH_RS(1)) route (
+	instruction_route #(.N_ALU_RS(N_ALU_RS), .N_AGU_RS(N_AGU_RS), .N_BRANCH_RS(N_BRANCH_RS)) route (
 		.instruction_type(control_signals_in.instruction_type),
 		.alu_rs_busy(1'b0),
 		.agu_rs_busy(1'b0),
@@ -74,6 +79,11 @@ module test_full_branch_fu;
 		.branch_rs_route(rs_enable),
 		.stall(stall)
 	);
+
+	// what's TODO ?
+	// - instantiate a branch_predictor
+	// - create a mock register file, or a real one to test writeback (no working ROB yet)
+	// - route register file contents to inputs, or I could just work on the real routing logic
 
 	reservation_station #(.XLEN(XLEN), .TAG_WIDTH(ROB_TAG_WIDTH)) reservation_station (
 		.clk(clk),
@@ -132,7 +142,7 @@ module test_full_branch_fu;
 	functional_unit_output_buffer #(.XLEN(XLEN), .TAG_WIDTH(ROB_TAG_WIDTH)) output_buf (
 		.clk(clk),
 		.reset(reset),
-		.value(fu_result),
+		.value(next_instruction),
 		.tag(reorder_buffer_tag_out),
 		.write_en(write_to_buffer),
 		.not_empty(output_buf_not_empty),

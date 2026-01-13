@@ -11,7 +11,7 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	input logic [XLEN-1:0]		v1_in,
 	input logic [TAG_WIDTH-1:0]	q2_in,
 	input logic [XLEN-1:0]		v2_in,
-	input control_signal_bus	control_signal_bus_in,
+	input control_signal_bus	control_signals_in,
 	input logic [TAG_WIDTH-1:0]	reorder_buffer_tag_in,
 
 	// need to store these to execute branches
@@ -29,7 +29,7 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	output logic [XLEN-1:0]		v1_out,
 	output logic [TAG_WIDTH-1:0]	q2_out,
 	output logic [XLEN-1:0]		v2_out,
-	output control_signal_bus	control_signal_bus_out,
+	output control_signal_bus	control_signals_out,
 	output logic [TAG_WIDTH-1:0]	reorder_buffer_tag_out,
 
 	output logic [XLEN-1:0]		pc_plus_four_out,
@@ -65,7 +65,7 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 			v1_out <= 0;
 			q2_out <= 0;
 			v2_out <= 0;
-			control_signal_bus_out <= 0;
+			control_signals_out <= 0;
 			reorder_buffer_tag_out <= 0;
 			busy <= 0;
 			dispatched <= 0;
@@ -93,7 +93,7 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 			// instruction is being stored in the reservation stations
 			if (enable) begin
 				reorder_buffer_tag_out <= reorder_buffer_tag_in;
-				control_signal_bus_out <= control_signal_bus_in;
+				control_signals_out <= control_signals_in;
 				pc_plus_four_out <= pc_plus_four_in;
 				predicted_next_instruction_out <= predicted_next_instruction_in;
 				branch_prediction_out <= branch_prediction_in;

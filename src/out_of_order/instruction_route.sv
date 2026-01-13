@@ -20,20 +20,38 @@ module instruction_route #(parameter XLEN=32, parameter N_ALU_RS, parameter N_AG
 	logic [N_AGU_RS-1:0] agu_rs_arbiter_out;
 	logic [N_BRANCH_RS-1:0] branch_rs_arbiter_out;
 
-	lsb_fixed_priority_arbiter #(.N(N_ALU_RS)) alu_rs_arbiter (
-		.in(~alu_rs_busy),
-		.out(alu_rs_arbiter_out)
-	);
+	generate
+		if (N_ALU_RS > 1) begin
+			lsb_fixed_priority_arbiter #(.N(N_ALU_RS)) alu_rs_arbiter (
+				.in(~alu_rs_busy),
+				.out(alu_rs_arbiter_out)
+			);
+		end else begin
+			assign alu_rs_arbiter_out = ~alu_rs_busy;
+		end
+	endgenerate
 
-	lsb_fixed_priority_arbiter #(.N(N_AGU_RS)) agu_rs_arbiter (
-		.in(~agu_rs_busy),
-		.out(agu_rs_arbiter_out)
-	);
+	generate
+		if (N_AGU_RS > 1) begin
+			lsb_fixed_priority_arbiter #(.N(N_AGU_RS)) agu_rs_arbiter (
+				.in(~agu_rs_busy),
+				.out(agu_rs_arbiter_out)
+			);
+		end else begin
+			assign agu_rs_arbiter_out = ~agu_rs_busy;
+		end
+	endgenerate
 
-	lsb_fixed_priority_arbiter #(.N(N_BRANCH_RS)) branch_rs_arbiter (
-		.in(~branch_rs_busy),
-		.out(branch_rs_arbiter_out)
-	);
+	generate
+		if (N_BRANCH_RS > 1) begin
+			lsb_fixed_priority_arbiter #(.N(N_BRANCH_RS)) branch_rs_arbiter (
+				.in(~branch_rs_busy),
+				.out(branch_rs_arbiter_out)
+			);
+		end else begin
+			assign branch_rs_arbiter_out = ~branch_rs_busy;
+		end
+	endgenerate
 
 	assign alu_rs_route = alu_rs_arbiter_out & {N_ALU_RS{instruction_type == 'b00}};
 	assign branch_rs_route = branch_rs_arbiter_out & {N_BRANCH_RS{instruction_type == 'b01}};

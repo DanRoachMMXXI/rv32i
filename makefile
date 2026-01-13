@@ -1,5 +1,3 @@
-# verilator_cmd = verilator --binary -j 0
-
 # taken from the command line on eda playground and modified to use my path to uvm
 # source files come after this
 
@@ -9,6 +7,8 @@ UVM_SRC = $(UVM_HOME)/src
 VLOG = vlog
 VSIM = vsim
 VSIM_ARGS = -sv_lib $(UVM_HOME)/lib/uvm_dpi64 -c -do "run -all; quit"
+
+VERILATOR = verilator --binary -j 0
 
 SRC_INCDIR = +incdir+./src
 UVM_INCDIR = +incdir+$(UVM_SRC)
@@ -22,7 +22,7 @@ uvm:
 	$(VLOG) $(UVM_INCDIR) $(UVM_SRC)/uvm_pkg.sv
 
 sc single_cycle:
-	verilator --binary -j 0 test/single_cycle.sv \
+	$(VERILATOR) test/single_cycle.sv \
 		src/common/* \
 		src/single_cycle/*
 
@@ -38,7 +38,7 @@ sc single_cycle:
 	# 	src/single_cycle.sv
 
 six_stage_pipeline six ssp:
-	verilator --binary -j 0 test/six_stage_pipeline.sv \
+	$(VERILATOR) test/six_stage_pipeline.sv \
 		src/common/* \
 		src/six_stage_pipeline/*
 
@@ -176,48 +176,52 @@ pcsel pc_select:
 	# run simulation
 	$(VSIM) $(VSIM_ARGS) pc_select_tb_top
 
-reorder_buffer:
-	$(VLOG) src/reorder_buffer.sv
+reorder_buffer rob:
+	# $(VLOG) src/reorder_buffer.sv
+	$(VERILATOR) --top-module test_reorder_buffer test/out_of_order/reorder_buffer.sv test/out_of_order/instruction_type.sv src/out_of_order/reorder_buffer.sv src/common/lsb_priority_encoder.sv
 
 fubuf:
-	verilator --binary -j 0 src/out_of_order/functional_unit_output_buffer.sv test/out_of_order/functional_unit_output_buffer.sv
+	$(VERILATOR) src/out_of_order/functional_unit_output_buffer.sv test/out_of_order/functional_unit_output_buffer.sv
 
 rs:
-	verilator --binary -j 0 src/out_of_order/reservation_station.sv test/out_of_order/reservation_station.sv
+	$(VERILATOR) src/out_of_order/reservation_station.sv test/out_of_order/reservation_station.sv
 
 full_fu:
-	verilator --binary -j 0 --top-module test_full_fu src/common/control_signal_bus.sv test/out_of_order/full_fu.sv src/common/alu.sv src/out_of_order/reservation_station.sv src/out_of_order/functional_unit_output_buffer.sv src/out_of_order/alu_functional_unit.sv
+	$(VERILATOR) --top-module test_full_fu src/common/control_signal_bus.sv test/out_of_order/full_fu.sv src/common/alu.sv src/out_of_order/reservation_station.sv src/out_of_order/functional_unit_output_buffer.sv src/out_of_order/alu_functional_unit.sv
 	./obj_dir/Vtest_full_fu
 
 cdb_arbiter:
-	verilator --binary -j 0 test/out_of_order/cdb_arbiter.sv src/out_of_order/cdb_arbiter.sv
+	$(VERILATOR) test/out_of_order/cdb_arbiter.sv src/out_of_order/cdb_arbiter.sv
 	./obj_dir/Vcdb_arbiter
 
 ldq load_queue:
-	verilator --binary -j 0 test/out_of_order/lsu/load_queue.sv src/out_of_order/lsu/load_queue.sv
+	$(VERILATOR) test/out_of_order/lsu/load_queue.sv src/out_of_order/lsu/load_queue.sv
 
 stq store_queue:
-	verilator --binary -j 0 test/out_of_order/lsu/store_queue.sv src/out_of_order/lsu/store_queue.sv
+	$(VERILATOR) test/out_of_order/lsu/store_queue.sv src/out_of_order/lsu/store_queue.sv
 
 yes youngest_entry_select:
-	verilator --binary -j 0 {test,src}/out_of_order/lsu/youngest_entry_select.sv
+	$(VERILATOR) {test,src}/out_of_order/lsu/youngest_entry_select.sv
 
 lsdc load_store_dep_checker:
-	verilator --binary -j 0 test/out_of_order/lsu/load_store_dep_checker.sv src/out_of_order/lsu/youngest_entry_select.sv src/out_of_order/lsu/load_store_dep_checker.sv
+	$(VERILATOR) test/out_of_order/lsu/load_store_dep_checker.sv src/out_of_order/lsu/youngest_entry_select.sv src/out_of_order/lsu/load_store_dep_checker.sv
 
 ofd order_failure_detector:
-	verilator --binary -j 0 test/out_of_order/lsu/order_failure_detector.sv src/out_of_order/lsu/age_comparator.sv src/out_of_order/lsu/order_failure_detector.sv
+	$(VERILATOR) test/out_of_order/lsu/order_failure_detector.sv src/out_of_order/lsu/age_comparator.sv src/out_of_order/lsu/order_failure_detector.sv
 
 searcher: load_store_dep_checker order_failure_detector
 
 lsu_control:
-	verilator --binary -j 0 test/out_of_order/lsu/lsu_control.sv src/out_of_order/lsu/lsu_control.sv src/common/lsb_priority_encoder.sv
+	$(VERILATOR) test/out_of_order/lsu/lsu_control.sv src/out_of_order/lsu/lsu_control.sv src/common/lsb_priority_encoder.sv
 
 lsu load_store_unit:
-	verilator --binary -j 0 +define+DEBUG test/out_of_order/lsu/load_store_unit.sv src/out_of_order/lsu/*.sv src/common/lsb_priority_encoder.sv
+	$(VERILATOR) +define+DEBUG test/out_of_order/lsu/load_store_unit.sv src/out_of_order/lsu/*.sv src/common/lsb_priority_encoder.sv
 
 instruction_route ir:
-	verilator --binary -j 0 --top-module test_instruction_route test/out_of_order/instruction_route.sv src/out_of_order/instruction_route.sv src/common/fixed_priority_arbiter.sv
+	$(VERILATOR) --top-module test_instruction_route test/out_of_order/instruction_route.sv src/out_of_order/instruction_route.sv src/common/fixed_priority_arbiter.sv
+
+full_branch_fu bfu:
+	$(VERILATOR) --top-module test_full_branch_fu src/common/*.sv test/out_of_order/branch/full_branch_fu.sv src/out_of_order/branch/branch_functional_unit.sv src/out_of_order/*.sv
 
 clean:
 	rm -rf work transcript *.log *.wlf

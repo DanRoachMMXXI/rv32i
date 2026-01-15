@@ -81,9 +81,17 @@ module test_full_branch_fu;
 	);
 
 	// what's TODO ?
-	// - instantiate a branch_predictor
 	// - create a mock register file, or a real one to test writeback (no working ROB yet)
 	// - route register file contents to inputs, or I could just work on the real routing logic
+	// - reorder buffer and flusher
+
+	branch_predictor #(.XLEN(XLEN)) branch_predictor (
+		.pc_plus_four(),
+		.branch_target(),
+		.jump(),
+		.branch(),
+		.branch_predicted_taken()
+	);
 
 	reservation_station #(.XLEN(XLEN), .TAG_WIDTH(ROB_TAG_WIDTH)) reservation_station (
 		.clk(clk),

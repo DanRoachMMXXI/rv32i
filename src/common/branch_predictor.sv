@@ -13,25 +13,6 @@ module branch_predictor #(parameter XLEN=32) (
 	 * this module, but idk, that's why it's a TODO
 	 */
 
-	/*
-	 * TODO
-	 * From pg 31 of the ISA: (in context of prediction for JALR)
-	 * Return-address prediction stacks are a common feature of high-performance instruction-fetch units,
-	 * but require accurate detection of instructions used for procedure calls and returns to be effective. For
-	 * RISC-V, hints as to the instructions' usage are encoded implicitly via the register numbers used. A JAL
-	 * instruction should push the return address onto a return-address stack (RAS) only when rd is 'x1' or x5.
-	 * JALR instructions should push/pop a RAS as shown in Table 3.
-	 *
-	 * so basically branch prediction will have to have a separate thing
-	 * for predicting the base address (which gets the immediate added to
-	 * it) for JALR instructions.  this will be it's own subcomponent
-	 * which will be the source of the base value, selected by the
-	 * branch_base signal from instruction_decode, added to the immediate
-	 * and provided into this subcomponent via the branch_target signal,
-	 * as well as being forwarded through the pipeline for reference in
-	 * the branch evaluator.
-	 */
-
 	input logic jump,
 	input logic branch,
 

@@ -33,39 +33,35 @@ module return_address_stack #(parameter XLEN=32, parameter STACK_SIZE=16) (
 	);
 
 
+	// TODO: note how this uses blocking assignments instead of
+	// non-blocking assignments.  this is because the stack supports
+	// performing a push and a pop in the same clock cycle, so it needs to
+	// perform the pop first, followed by the push.  I'd like to address
+	// this in the future.
 	always @(posedge clk) begin
 		// defaults: anything not a pop
-		address_out <= 0;
-		valid_out <= 0;
+		address_out = 0;
+		valid_out = 0;
 
 		if (restore_checkpoint) begin
-			stack_pointer <= sp_checkpoint;
+			stack_pointer = sp_checkpoint;
 		end else if (checkpoint) begin
-			sp_checkpoint <= stack_pointer;
+			sp_checkpoint = stack_pointer;
 		end else begin
 			if (pop) begin	// pop
-				address_out <= stack[stack_pointer - 1];
-				valid_out <= stack_valid[stack_pointer - 1];
+				address_out = stack[stack_pointer - 1];
+				valid_out = stack_valid[stack_pointer - 1];
 
-				stack[stack_pointer - 1] <= 0;
-				stack_valid[stack_pointer - 1] <= 0;
+				stack[stack_pointer - 1] = 0;
+				stack_valid[stack_pointer - 1] = 0;
+
+				stack_pointer = stack_pointer - 1;
 			end
 	       		if (push) begin	// push
-				stack[stack_pointer] <= address_in;
-				stack_valid[stack_pointer] <= 1;
-			end
+				stack[stack_pointer] = address_in;
+				stack_valid[stack_pointer] = 1;
 
-			// stack pointer logic
-			// I previously handled this in the push and pop
-			// blocks, and in verilator it actually worked fine,
-			// but I'm wary of other simulators causing the
-			// assignment in the push block to overwrite the
-			// assignment made in the pop block.  So I'm
-			// specifying it explicitly here.
-			if (pop && !push) begin
-				stack_pointer <= stack_pointer - 1;
-			end else if (!pop && push) begin
-				stack_pointer <= stack_pointer + 1;
+				stack_pointer = stack_pointer + 1;
 			end
 		end
 	end
@@ -85,22 +81,22 @@ endmodule
 // TODO: checkpoint and restore_checkpoint perhaps set by this module??
 module ras_control (
 	input logic jump,	// control signal: is the instruction a jump?
-	input logic jump_type,	// 0 = JAL, 1 = JALR
+	input logic jalr,	// 0 = JAL, 1 = JALR
 
-	input logic [4:0] rs1,
-	input logic [4:0] rd,
+	input logic [4:0] rs1_index,
+	input logic [4:0] rd_index,
 
 	output logic push,
 	output logic pop
 );
-	logic rd_match;
-	logic rs1_match;
+	logic rd_index_match;
+	logic rs1_index_match;
 
-	assign rd_match = (rd == 1) || (rd == 5);
-	assign rs1_match = (rs1 == 1) || (rs1 == 5);
+	assign rd_index_match = (rd_index == 1) || (rd_index == 5);
+	assign rs1_index_match = (rs1_index == 1) || (rs1_index == 5);
 
-	assign push = jump && rd_match;	// in all cases where rd == x1/x5, for both JAL and JALR, PC+4 is pushed onto the RAS
-	assign pop = jump && jump_type == 1 && rs1_match && (	// only pop on JALR where rs1 matches
-		!rd_match || (rd_match && rd == rs1)
+	assign push = jump && rd_index_match;	// in all cases where rd == x1/x5, for both JAL and JALR, PC+4 is pushed onto the RAS
+	assign pop = jump && jalr && rs1_index_match && (	// only pop on JALR where rs1_index matches
+		!rd_index_match || (rd_index_match && rd_index != rs1_index)
 	);
 endmodule

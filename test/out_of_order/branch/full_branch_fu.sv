@@ -4,6 +4,7 @@ module test_full_branch_fu;
 	localparam N_ALU_RS = 1;
 	localparam N_AGU_RS = 1;
 	localparam N_BRANCH_RS = 1;
+	localparam RAS_SIZE = 16;
 
 	logic clk = 0;
 	logic reset = 0;
@@ -60,6 +61,10 @@ module test_full_branch_fu;
 
 	logic				output_buf_not_empty;
 
+	// RAS control to RAS
+	logic	ras_push;
+	logic	ras_pop;
+
 	assign cdb_data = tb_drive_cdb ? tb_cdb_data : 'bZ;
 	assign cdb_rob_tag = tb_drive_cdb ? tb_cdb_rob_tag : 'bZ;
 
@@ -84,6 +89,38 @@ module test_full_branch_fu;
 	// - create a mock register file, or a real one to test writeback (no working ROB yet)
 	// - route register file contents to inputs, or I could just work on the real routing logic
 	// - reorder buffer and flusher
+
+	ras_control ras_control (
+		.jump(control_signals_in.jump),
+		.jalr(control_signals_in.jalr),
+		.rs1(),
+		.rd(),
+
+		.push(ras_push),
+		.pop(ras_pop)
+	);
+
+	return_address_stack #(.XLEN(XLEN), .STACK_SIZE(RAS_SIZE)) ras (
+		.clk(clk),
+		.reset(reset),
+
+		.address_in(),
+		.push(ras_push),
+		.pop(ras_pop),
+
+		.checkpoint(),
+		.restore_checkpoint(),
+
+		.address_out(),
+		.valid_out(),
+
+		// debug signals, no need to attach these unless shit hits the
+		// fan
+		.stack(),
+		.stack_valid(),
+		.stack_pointer(),
+		.sp_checkpoint()
+	);
 
 	branch_predictor #(.XLEN(XLEN)) branch_predictor (
 		.pc_plus_four(),

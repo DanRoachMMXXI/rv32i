@@ -41,19 +41,20 @@ typedef struct packed {
 	logic branch;		// bool to jump conditionally
 	logic branch_if_zero;	// bool indicating the condition to jump
 	logic jump;		// bool to jump unconditionally
-	logic branch_base;	// if branch_target = base + immediate, this signal
-				// tracks what the base is
-				// 0: pc_plus_four
-				// 1: rs1 for 'b1101111R
+	logic jalr;		// for jumps, this tracks whether it's a JAL or JALR
+				// if branch_target = base + immediate, the
+				// jalr signal will be used to track what the
+				// base is 0: pc_plus_four
+				// 1: rs1 for JALR
 
 	// signals to write back to register file or memory
 	logic rf_write_en;
 	logic mem_write_en;
 
 	// out of order signals
-	// instruction_type: tracks the "OOO type" of instruction being
-	// executed to route it to the correct FU and for use by the ROB to
-	// know how/where to commit the instruction
+	// instruction_type: tracks the "out-of-order type" of instruction
+	// being executed to route it to the correct FU and for use by the ROB
+	// to know how/where to commit the instruction
 	// 00 - ALU
 	// 01 - branch
 	// 10 - load

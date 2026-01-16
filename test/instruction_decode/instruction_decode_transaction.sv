@@ -56,7 +56,7 @@ class instruction_decode_transaction #(parameter XLEN=32) extends uvm_sequence_i
 	logic branch;
 	logic branch_if_zero;
 	logic jump;
-	logic branch_base;
+	logic jalr;
 	logic rf_write_en;
 	logic mem_write_en;
 

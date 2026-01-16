@@ -104,7 +104,7 @@ class instruction_decode_scoreboard #(parameter XLEN=32) extends uvm_component;
 		logic expected_jump = expected_jump_f(tx.instruction);
 		logic expected_branch = expected_branch_f(tx.instruction);
 		logic expected_branch_if_zero = expected_branch_if_zero_f(tx.instruction);
-		logic expected_branch_base = expected_branch_base_f(tx.instruction);
+		logic expected_jalr = expected_jalr_f(tx.instruction);
 
 		// validate tx.jump
 		if (tx.jump != expected_jump) begin
@@ -121,9 +121,9 @@ class instruction_decode_scoreboard #(parameter XLEN=32) extends uvm_component;
 			`uvm_error("SCOREBOARD", $sformatf("branch_if_zero signal %d did not match the expected value %d for instruction 0x%0h", tx.branch_if_zero, expected_branch_if_zero, tx.instruction))
 		end
 
-		// validate tx.branch_base
-		if (tx.branch_base != expected_branch_base) begin
-			`uvm_error("SCOREBOARD", $sformatf("branch_base signal %d did not match the expected value %d for instruction 0x%0h", tx.branch_base, expected_branch_base, tx.instruction))
+		// validate tx.jalr
+		if (tx.jalr != expected_jalr) begin
+			`uvm_error("SCOREBOARD", $sformatf("jalr signal %d did not match the expected value %d for instruction 0x%0h", tx.jalr, expected_jalr, tx.instruction))
 		end
 	endfunction
 
@@ -148,7 +148,7 @@ class instruction_decode_scoreboard #(parameter XLEN=32) extends uvm_component;
 			return 0;
 	endfunction
 
-	function logic expected_branch_base_f(logic[31:0] instruction);
+	function logic expected_jalr_f(logic[31:0] instruction);
 		if (instruction[6:0] == I_TYPE_JALR)
 			return 1;
 		else

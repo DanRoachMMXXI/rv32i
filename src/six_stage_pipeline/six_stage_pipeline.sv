@@ -296,7 +296,7 @@ module six_stage_pipeline #(parameter XLEN=32, parameter PROGRAM="") (
 		.write_byte_en({4{DM_control_signals.mem_write_en}}),
 		.data_out(DM_memory_data_out));
 
-	assign RF_branch_target = (RF_control_signals.branch_base ? RF_rs1 : RF_pc_plus_four) + RF_immediate;
+	assign RF_branch_target = (RF_control_signals.jalr ? RF_rs1 : RF_pc_plus_four) + RF_immediate;
 
 	branch_predictor #(.XLEN(XLEN)) branch_predictor(
 		// inputs

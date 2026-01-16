@@ -53,13 +53,14 @@ module branch_decode (
 	input logic [6:0] opcode,
 	input logic [2:0] funct3,
 	output logic jump,
+	output logic jalr,
 	output logic branch,
-	output logic branch_if_zero,
-	output logic branch_base
+	output logic branch_if_zero
 	);
 
 	// JAL || I_TYPE_JALR
 	assign jump = (opcode == 'b1101111 || opcode == 'b1100111) ? 1 : 0;
+	assign jalr = opcode == 'h1100111;
 	assign branch = (opcode == 'b1100011) ? 1 : 0;	// B_TYPE
 	always_comb
 		case (funct3)
@@ -70,7 +71,6 @@ module branch_decode (
 			default:
 				branch_if_zero = 0;
 		endcase
-	assign branch_base = (opcode == 'b1100111) ? 1 : 0;	// I_TYPE_JALR
 endmodule
 
 module alu_decode (
@@ -211,7 +211,7 @@ module instruction_decode #(parameter XLEN=32) (
 		.jump(control_signals.jump),
 		.branch(control_signals.branch),
 		.branch_if_zero(control_signals.branch_if_zero),
-		.branch_base(control_signals.branch_base));
+		.jalr(control_signals.jalr));
 
 
 	immediate_decode #(.XLEN(32)) immediate_decode(

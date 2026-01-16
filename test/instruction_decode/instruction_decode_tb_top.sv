@@ -21,7 +21,7 @@ module instruction_decode_tb_top;
 	.branch(virt_instruction_decode_if.branch),
 	.branch_if_zero(virt_instruction_decode_if.branch_if_zero),
 	.jump(virt_instruction_decode_if.jump),
-	.branch_base(virt_instruction_decode_if.branch_base),
+	.jalr(virt_instruction_decode_if.jalr),
 	.rf_write_en(virt_instruction_decode_if.rf_write_en),
 	.mem_write_en(virt_instruction_decode_if.mem_write_en)
 	);

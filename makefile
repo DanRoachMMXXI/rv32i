@@ -223,6 +223,9 @@ instruction_route ir:
 full_branch_fu bfu:
 	$(VERILATOR) --top-module test_full_branch_fu src/common/*.sv test/out_of_order/branch/full_branch_fu.sv src/out_of_order/branch/branch_functional_unit.sv src/out_of_order/*.sv
 
+return_address_stack ras:
+	$(VERILATOR) test/out_of_order/branch/return_address_stack.sv src/out_of_order/branch/return_address_stack.sv
+
 clean:
 	rm -rf work transcript *.log *.wlf
 	rm -rf obj_dir

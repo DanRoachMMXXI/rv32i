@@ -184,7 +184,7 @@ fubuf:
 	$(VERILATOR) src/out_of_order/functional_unit_output_buffer.sv test/out_of_order/functional_unit_output_buffer.sv
 
 rs:
-	$(VERILATOR) src/out_of_order/reservation_station.sv test/out_of_order/reservation_station.sv
+	$(VERILATOR) --top-module test_reservation_station src/common/control_signal_bus.sv test/out_of_order/reservation_station.sv src/out_of_order/reservation_station.sv
 
 full_fu:
 	$(VERILATOR) --top-module test_full_fu src/common/control_signal_bus.sv test/out_of_order/full_fu.sv src/common/alu.sv src/out_of_order/reservation_station.sv src/out_of_order/functional_unit_output_buffer.sv src/out_of_order/alu_functional_unit.sv

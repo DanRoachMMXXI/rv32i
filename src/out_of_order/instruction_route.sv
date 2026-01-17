@@ -74,11 +74,15 @@ module operand_route #(parameter XLEN=32, parameter ROB_SIZE, parameter ROB_TAG_
 	input logic [4:0]	rs1_index,
 	input logic [4:0]	rs2_index,
 
-	input logic [31:0][XLEN-1:0]		rf_value,
-	input logic [31:0][ROB_TAG_WIDTH-1:0]	rf_rob_tag,
-	input logic [31:0]			rf_rob_tag_valid,
+	// inputs from register file
+	input logic [XLEN-1:0]			rs1,
+	input logic [ROB_TAG_WIDTH-1:0]		rs1_rob_tag,
+	input logic				rs1_rob_tag_valid,
+	input logic [XLEN-1:0]			rs2,
+	input logic [ROB_TAG_WIDTH-1:0]		rs2_rob_tag,
+	input logic				rs2_rob_tag_valid,
 
-	input logic [ROB_SIZE-1:0]		rob_valid,
+	// input logic [ROB_SIZE-1:0]		rob_valid,
 	input logic [ROB_SIZE-1:0][XLEN-1:0]	rob_value,
 	input logic [ROB_SIZE-1:0]		rob_data_ready,
 
@@ -89,5 +93,33 @@ module operand_route #(parameter XLEN=32, parameter ROB_SIZE, parameter ROB_TAG_
 	output logic [ROB_TAG_WIDTH-1:0]	q2,
 	output logic [XLEN-1:0]			v2
 );
-	// TODO: implement, refer to hand drawn diagram
+	always_comb begin
+		q1_valid = 0;
+		q1 = 0;
+		v1 = 0;
+
+		if (!rs1_rob_tag_valid) begin
+			v1 = rs1;
+		end else if (/* rob_valid[rs1_rob_tag] && */ rob_data_ready[rs1_rob_tag]) begin
+			v1 = rob_value[rs1_rob_tag];
+		end else begin
+			q1_valid = 1;
+			q1 = rs1_rob_tag;
+		end
+	end
+
+	always_comb begin
+		q2_valid = 0;
+		q2 = 0;
+		v2 = 0;
+
+		if (!rs2_rob_tag_valid) begin
+			v2 = rs2;
+		end else if (/* rob_valid[rs2_rob_tag] && */ rob_data_ready[rs2_rob_tag]) begin
+			v2 = rob_value[rs2_rob_tag];
+		end else begin
+			q2_valid = 1;
+			q2 = rs2_rob_tag;
+		end
+	end
 endmodule

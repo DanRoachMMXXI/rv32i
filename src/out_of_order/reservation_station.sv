@@ -10,12 +10,16 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 
 	// using terminology from Hennessy & Patterson book
 	// q = tag, v = value
+	// using a valid bit to indicate whether the operand needs to monitor
+	// the CDB for the tag
+	input logic			q1_valid_in,
 	input logic [TAG_WIDTH-1:0]	q1_in,
 	input logic [XLEN-1:0]		v1_in,
+	input logic			q2_valid_in,
 	input logic [TAG_WIDTH-1:0]	q2_in,
 	input logic [XLEN-1:0]		v2_in,
 	input control_signal_bus	control_signals_in,
-	input logic [TAG_WIDTH-1:0]	reorder_buffer_tag_in,
+	input logic [TAG_WIDTH-1:0]	rob_tag_in,
 
 	// need to store these to execute branches
 	// they should be optimized away during synthesis for the other
@@ -28,12 +32,14 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	input wire [TAG_WIDTH-1:0]	cdb_rob_tag,
 	input wire [XLEN-1:0]		cdb_data,
 
+	output logic			q1_valid_out,
 	output logic [TAG_WIDTH-1:0]	q1_out,
 	output logic [XLEN-1:0]		v1_out,
+	output logic			q2_valid_out,
 	output logic [TAG_WIDTH-1:0]	q2_out,
 	output logic [XLEN-1:0]		v2_out,
 	output control_signal_bus	control_signals_out,
-	output logic [TAG_WIDTH-1:0]	reorder_buffer_tag_out,
+	output logic [TAG_WIDTH-1:0]	rob_tag_out,
 
 	output logic [XLEN-1:0]		pc_plus_four_out,
 	output logic [XLEN-1:0]		predicted_next_instruction_out,
@@ -53,10 +59,14 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	// if enable is set, we're gonna be reading the value on qN_in
 	// and see if that tag is on the CDB.  else, we're just comparing
 	// cdb_rob_tag against what's already in qN_out
-	assign read_cdb_data_op1 = ((enable ? q1_in : q1_out) == cdb_rob_tag) && cdb_valid;
-	assign read_cdb_data_op2 = ((enable ? q2_in : q2_out) == cdb_rob_tag) && cdb_valid;
+	assign read_cdb_data_op1 = (enable ? q1_valid_in : q1_valid_out)	// is the tag actually valid?
+		&& ((enable ? q1_in : q1_out) == cdb_rob_tag)			// does the tag match what is on the CDB?
+		&& cdb_valid;							// is the value on the CDB valid?
+	assign read_cdb_data_op2 = (enable ? q2_valid_in : q2_valid_out)	// same logic as above
+		&& ((enable ? q2_in : q2_out) == cdb_rob_tag)
+		&& cdb_valid;
 
-	assign ready_to_execute = busy && !dispatched && q1_out == 0 && q2_out == 0;
+	assign ready_to_execute = busy && !dispatched && q1_valid_out == 0 && q2_valid_out == 0;
 
 	always @(posedge clk) begin
 		// this is not just the global reset signal, but should also
@@ -64,12 +74,14 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 		// station: i.e. ROB index appears on the CDB or memory
 		// address bus
 		if (!reset) begin
+			q1_valid_out <= 0;
 			q1_out <= 0;
 			v1_out <= 0;
+			q2_valid_out <= 0;
 			q2_out <= 0;
 			v2_out <= 0;
 			control_signals_out <= 0;
-			reorder_buffer_tag_out <= 0;
+			rob_tag_out <= 0;
 			busy <= 0;
 			dispatched <= 0;
 			pc_plus_four_out <= 0;
@@ -78,12 +90,14 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 		end else begin
 			// store 0 if the tag matched the cdb tag, else store
 			// input if enable, else retain previous tag
+			q1_valid_out <= (read_cdb_data_op1) ? 1'b0 : (enable) ? q1_valid_in : q1_valid_out;
 			q1_out <= (read_cdb_data_op1) ? 'b0 : (enable) ? q1_in : q1_out;
 			// store cdb data if the tag matches, else store input
 			// if enable, else retain previous data value
 			v1_out <= (read_cdb_data_op1) ? cdb_data : (enable) ? v1_in : v1_out;
 
 			// same logic as above for the second operand
+			q2_valid_out <= (read_cdb_data_op2) ? 1'b0 : (enable) ? q2_valid_in : q2_valid_out;
 			q2_out <= (read_cdb_data_op2) ? 'b0 : (enable) ? q2_in : q2_out;
 			v2_out <= (read_cdb_data_op2) ? cdb_data : (enable) ? v2_in : v2_out;
 
@@ -95,7 +109,7 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 			// only update the rest of the signals if enable is set, meaning an
 			// instruction is being stored in the reservation stations
 			if (enable) begin
-				reorder_buffer_tag_out <= reorder_buffer_tag_in;
+				rob_tag_out <= rob_tag_in;
 				control_signals_out <= control_signals_in;
 				pc_plus_four_out <= pc_plus_four_in;
 				predicted_next_instruction_out <= predicted_next_instruction_in;

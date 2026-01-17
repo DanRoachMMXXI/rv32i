@@ -197,6 +197,8 @@ module instruction_decode #(parameter XLEN=32) (
 	assign opcode = instruction[6:0];
 	assign funct3 = instruction[14:12];
 
+	assign control_signals.opcode = opcode;
+
 	// these values always map to these bits in the instruction ... but
 	// these bits in the instruction are not always interpreted as these
 	// values

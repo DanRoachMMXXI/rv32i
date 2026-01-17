@@ -51,6 +51,7 @@ module test_full_branch_fu;
 	logic [XLEN-1:0]		tb_cdb_data;
 	logic [ROB_TAG_WIDTH-1:0]	tb_cdb_rob_tag;
 
+	logic				q1_valid_in;
 	logic [ROB_TAG_WIDTH-1:0]	q1_out;
 	logic [XLEN-1:0]		v1_out;
 	logic [ROB_TAG_WIDTH-1:0]	q2_out;
@@ -179,8 +180,10 @@ module test_full_branch_fu;
 		.reset(rs_reset),
 		.enable(rs_enable),
 		.dispatched_in(accept),
+		.q1_valid_in(q1_valid_in),
 		.q1_in(q1_in),	// 0 if JAL or B_TYPE, 0 if JALR and rs1 value is ready in RF or ROB, otherwise tag for rs1
 		.v1_in(v1_in),	// pc if JAL or B_TYPE, rs1 if JALR
+		.q2_valid_in(1'b0),	// immediate, so no tag
 		.q2_in(0),	// immediate, so no tag
 		.v2_in(immediate),	// immediate
 		.control_signals_in(control_signals_in),

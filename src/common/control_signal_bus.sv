@@ -8,6 +8,10 @@
  * bus, as you can just assign 0 to it.
  */
 typedef struct packed {
+	// carry forward the opcode in cases where specific instructions need
+	// to be checked
+	logic [6:0] opcode;
+
 	// register indices
 	logic [4:0] rs1_index;
 	logic [4:0] rs2_index;
@@ -44,7 +48,8 @@ typedef struct packed {
 	logic jalr;		// for jumps, this tracks whether it's a JAL or JALR
 				// if branch_target = base + immediate, the
 				// jalr signal will be used to track what the
-				// base is 0: pc_plus_four
+				// base is
+				// 0: pc
 				// 1: rs1 for JALR
 
 	// signals to write back to register file or memory

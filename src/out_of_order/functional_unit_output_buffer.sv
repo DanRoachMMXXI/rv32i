@@ -24,9 +24,9 @@ module functional_unit_output_buffer #(parameter XLEN=32, TAG_WIDTH=32) (
 	output logic [1:0] write_to
 	);
 
-	logic [XLEN-1:0] values [0:3];
-	logic [XLEN-1:0] tags [0:3];
-	logic valid [0:3];
+	logic [3:0][XLEN-1:0]		values;
+	logic [3:0][TAG_WIDTH-1:0]	tags;
+	logic [3:0]			valid;
 
 	// logic [1:0] read_from;
 	// logic [1:0] write_to;
@@ -38,8 +38,8 @@ module functional_unit_output_buffer #(parameter XLEN=32, TAG_WIDTH=32) (
 	 * and data_bus_permit then changes the valid bit of the entry that was
 	 * broadcast to 0 on the next clock cycle.
 	 */
-	assign data_bus_data = data_bus_permit ? values[read_from] : 'bZ;
-	assign data_bus_tag = data_bus_permit ? tags[read_from] : 'bZ;
+	assign data_bus_data = data_bus_permit ? values[read_from] : {XLEN{1'bZ}};
+	assign data_bus_tag = data_bus_permit ? tags[read_from] : {TAG_WIDTH{1'bZ}};
 
 	always_ff @ (posedge clk) begin
 		if (!reset) begin

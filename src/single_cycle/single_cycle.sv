@@ -103,7 +103,14 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 		.write_byte_en({4{control_signals.mem_write_en}}),
 		.data_out(memory_data_out));
 
-	assign branch_target = (control_signals.jalr ? rs1 : pc_plus_four) + immediate;
+	branch_target #(.XLEN(XLEN)) branch_target_calculator (
+		.pc(pc),
+		.rs1(rs1),
+		.immediate(immediate),
+		.jalr(control_signals.jalr),
+
+		.branch_target(branch_target)
+	);
 
 	// obviously the concept of branch prediction in a single cycle
 	// microarchitecture is silly, but this is where the logic that

@@ -69,3 +69,25 @@ module instruction_route #(parameter XLEN=32, parameter N_ALU_RS, parameter N_AG
 		endcase
 	end
 endmodule
+
+module operand_route #(parameter XLEN=32, parameter ROB_SIZE, parameter ROB_TAG_WIDTH) (
+	input logic [4:0]	rs1_index,
+	input logic [4:0]	rs2_index,
+
+	input logic [31:0][XLEN-1:0]		rf_value,
+	input logic [31:0][ROB_TAG_WIDTH-1:0]	rf_rob_tag,
+	input logic [31:0]			rf_rob_tag_valid,
+
+	input logic [ROB_SIZE-1:0]		rob_valid,
+	input logic [ROB_SIZE-1:0][XLEN-1:0]	rob_value,
+	input logic [ROB_SIZE-1:0]		rob_data_ready,
+
+	output logic				q1_valid,
+	output logic [ROB_TAG_WIDTH-1:0]	q1,
+	output logic [XLEN-1:0]			v1,
+	output logic				q2_valid,
+	output logic [ROB_TAG_WIDTH-1:0]	q2,
+	output logic [XLEN-1:0]			v2
+);
+	// TODO: implement, refer to hand drawn diagram
+endmodule

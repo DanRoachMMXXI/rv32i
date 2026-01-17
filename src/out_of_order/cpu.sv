@@ -1,3 +1,13 @@
+/*
+ * TODO: figure out rs1 source for branch predictions
+ * - when we pop off the RAS, we absolutely use that value
+ * - when we aren't popping off the RAS, what do we use as a source?  I think
+ *   there could be an argument for caching or forwarding LUI and AUIPC values
+ *   from recent instructions (say the instruction just before the prediction)
+ *   and using that when we see that rs1_index for the JALR is the same as the
+ *   rd_index for the LUI or AUIPC.
+ *   - I think this is a good cook
+ */
 module cpu #(
 	parameter XLEN=32,
 	parameter ROB_SIZE,

@@ -1,3 +1,6 @@
+// TODO: need to use valid bits to determine when data is ready or if the tag
+// is valid (either, not both).  I designed this using tag=0 to indicate the
+// value is valid, but I realized that 0 is a valid index in the ROB.
 module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	input logic clk,
 	input logic reset,

@@ -18,7 +18,6 @@ module immediate_decode #(parameter XLEN=32) (
 			'b1100011:	// B_TYPE
 				immediate = {
 					{XLEN{instruction[31]}},
-					instruction[31],
 					instruction[7],
 					instruction[30:25],
 					instruction[11:8],
@@ -33,10 +32,9 @@ module immediate_decode #(parameter XLEN=32) (
 			'b1101111:	// J type
 				immediate = {
 					{XLEN{instruction[31]}},
-					instruction[20],
-					instruction[10:1],
-					instruction[11],
 					instruction[19:12],
+					instruction[20],
+					instruction[30:21],
 					1'b0
 				}[XLEN-1:0];
 			'b0110111, 'b0010111:	// U type
@@ -60,7 +58,7 @@ module branch_decode (
 
 	// JAL || I_TYPE_JALR
 	assign jump = (opcode == 'b1101111 || opcode == 'b1100111) ? 1 : 0;
-	assign jalr = opcode == 'h1100111;
+	assign jalr = opcode == 'b1100111;
 	assign branch = (opcode == 'b1100011) ? 1 : 0;	// B_TYPE
 	always_comb
 		case (funct3)
@@ -167,7 +165,7 @@ module out_of_order_decode (
 	);
 
 	always_comb begin
-		unique case (opcode)
+		case (opcode)
 			'b0110011,	// R_TYPE
 			'b0010011,	// I_TYPE_ALU
 			'b0110111,	// LUI
@@ -181,6 +179,8 @@ module out_of_order_decode (
 				instruction_type = 'b10;	// load
 			'b0100011:	// S_TYPE
 				instruction_type = 'b11;	// store
+			default:
+				instruction_type = 'b00;
 		endcase
 	end
 endmodule

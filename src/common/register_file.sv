@@ -1,11 +1,16 @@
 module register_file
-	#(parameter XLEN=32) (
+	#(parameter XLEN=32, parameter ROB_TAG_WIDTH=32) (
 	input logic clk,
 	input logic reset,
 
 	// indices for read
-	input logic [4:0] rs1_index,
-	input logic [4:0] rs2_index,
+	input logic [4:0]	rs1_index,
+	input logic [4:0]	rs2_index,
+
+	// fields to update tags when a ROB entry is allocated
+	input logic			rob_entry_alloc,
+	input logic [4:0]		rob_alloc_rd_index,
+	input logic [ROB_TAG_WIDTH-1:0] rob_alloc_tag,
 
 	// fields for the write
 	input logic [4:0] rd_index,
@@ -33,7 +38,7 @@ module register_file
 	assign rob_tag[0] = 0;
 	assign rob_tag_valid[0] = 0;
 	
-	always @(posedge clk)
+	always @(posedge clk) begin
 		if (!reset) begin
 			for (i = 1; i < 32; i = i + 1) begin
 				registers[i] <= 0;
@@ -55,7 +60,17 @@ module register_file
 					rob_tag_valid[rd_index] <= 0;	// this is what's important
 				end
 			end
+
+			// I think this needs to come after the above
+			// writeback logic, cause if an entry is allocated,
+			// that needs to take priority and overwrite the logic
+			// that clears the tag and valid bit
+			if (rob_entry_alloc && rob_alloc_rd_index != 0) begin
+				rob_tag[rob_alloc_rd_index] <= rob_alloc_tag;
+				rob_tag_valid[rob_alloc_rd_index] <= 1;
+			end
 		end
+	end
 	
 	assign rs1 = registers[rs1_index];
 	assign rs1_rob_tag = rob_tag[rs1_index];

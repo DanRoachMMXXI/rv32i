@@ -226,6 +226,9 @@ full_branch_fu bfu:
 return_address_stack ras:
 	$(VERILATOR) test/out_of_order/branch/return_address_stack.sv src/out_of_order/branch/return_address_stack.sv
 
+test_ooo_rf:
+	$(VERILATOR) test/out_of_order/register_file_modifications.sv src/common/register_file.sv
+
 clean:
 	rm -rf work transcript *.log *.wlf
 	rm -rf obj_dir

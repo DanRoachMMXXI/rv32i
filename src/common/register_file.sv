@@ -8,9 +8,11 @@ module register_file
 	input logic [4:0]	rs2_index,
 
 	// fields to update tags when a ROB entry is allocated
-	input logic			rob_entry_alloc,
-	input logic [4:0]		rob_alloc_rd_index,
-	input logic [ROB_TAG_WIDTH-1:0] rob_alloc_tag,
+	input logic			alloc_rob_entry,
+	input logic [4:0]		rob_alloc_rd_index,	// this is the rd_index of the instruction being routed
+								// as of now, the instruction being routed is the same as
+								// the one for which rs1 and rs2 are being read
+	input logic [ROB_TAG_WIDTH-1:0] rob_alloc_tag,	// this is just the ROB tail pointer
 
 	// fields for the write
 	input logic [4:0] rd_index,
@@ -33,12 +35,12 @@ module register_file
 	reg [31:0]			rob_tag_valid;	// is the rob_tag valid?  need this bit since 0 is a valid tag.
 	integer i;
 
-	// register 0 is hardwired to 0
-	assign registers[0] = 0;
-	assign rob_tag[0] = 0;
-	assign rob_tag_valid[0] = 0;
+	always_ff @(posedge clk) begin
+		// register 0 is hardwired to 0
+		registers[0] <= 0;
+		rob_tag[0] <= 0;
+		rob_tag_valid[0] <= 0;
 	
-	always @(posedge clk) begin
 		if (!reset) begin
 			for (i = 1; i < 32; i = i + 1) begin
 				registers[i] <= 0;
@@ -65,7 +67,7 @@ module register_file
 			// writeback logic, cause if an entry is allocated,
 			// that needs to take priority and overwrite the logic
 			// that clears the tag and valid bit
-			if (rob_entry_alloc && rob_alloc_rd_index != 0) begin
+			if (alloc_rob_entry && rob_alloc_rd_index != 0) begin
 				rob_tag[rob_alloc_rd_index] <= rob_alloc_tag;
 				rob_tag_valid[rob_alloc_rd_index] <= 1;
 			end

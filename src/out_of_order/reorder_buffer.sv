@@ -85,6 +85,19 @@ module reorder_buffer #(
 	// and update the PC if the branch was mispredicted
 	output logic [BUF_SIZE-1:0][XLEN-1:0]	rob_next_instruction,
 
+	// the specific ROB entry being committed,
+	// this is just rob_field[head], but I don't want to create an
+	// entirely separate module to do this
+	output logic		rob_commit_valid,
+	output logic [1:0]	rob_commit_instruction_type,
+	output logic		rob_commit_address_valid,
+	output logic [XLEN-1:0]	rob_commit_destination,
+	output logic [XLEN-1:0]	rob_commit_value,
+	output logic		rob_commit_data_ready,
+	output logic		rob_commit_branch_mispredict,
+	output logic		rob_commit_exception,
+	output logic [XLEN-1:0]	rob_commit_next_instruction,
+
 	// circular buffer pointers
 	// head needs to be output so that the buffer entry at head
 	// can be processed when commit is set.
@@ -191,6 +204,17 @@ module reorder_buffer #(
 
 	// the buffer is full if the entry that would be written to is already a valid entry
 	assign full = rob_valid[tail];
+
+	// values being committed if commit is set
+	assign rob_commit_valid = rob_valid[head];
+	assign rob_commit_instruction_type = rob_instruction_type[head];
+	assign rob_commit_address_valid = rob_address_valid[head];
+	assign rob_commit_destination = rob_destination[head];
+	assign rob_commit_value = rob_value[head];
+	assign rob_commit_data_ready = rob_data_ready[head];
+	assign rob_commit_branch_mispredict = rob_branch_mispredict[head];
+	assign rob_commit_exception = rob_exception[head];
+	assign rob_commit_next_instruction = rob_next_instruction[head];
 
 	function void clear_entry(logic[TAG_WIDTH-1:0] index);
 		rob_valid[index] <= 0;

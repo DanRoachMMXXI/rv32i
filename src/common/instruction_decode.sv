@@ -161,7 +161,10 @@ endmodule
 
 module out_of_order_decode (
 	input logic [6:0] opcode,
-	output logic [1:0] instruction_type
+	output logic [1:0] instruction_type,
+	output logic alloc_rob_entry,
+	output logic alloc_ldq_entry,
+	output logic alloc_stq_entry
 	);
 
 	always_comb begin
@@ -183,6 +186,12 @@ module out_of_order_decode (
 				instruction_type = 'b00;
 		endcase
 	end
+
+	// everything allocates a ROB entry UNLESS we fold instructions (ex:
+	// U type into JALR where JALR overwrites the U type)
+	assign alloc_rob_entry = 1'b1;
+	assign alloc_ldq_entry = (opcode == 'b0000011);	// I_TYPE_LOAD
+	assign alloc_stq_entry = (opcode == 'b0100011);	// S_TYPE
 endmodule
 
 module instruction_decode #(parameter XLEN=32) (
@@ -198,6 +207,7 @@ module instruction_decode #(parameter XLEN=32) (
 	assign funct3 = instruction[14:12];
 
 	assign control_signals.opcode = opcode;
+	assign control_signals.funct3 = funct3;
 
 	// these values always map to these bits in the instruction ... but
 	// these bits in the instruction are not always interpreted as these
@@ -265,6 +275,9 @@ module instruction_decode #(parameter XLEN=32) (
 
 	out_of_order_decode ooo_decode (
 		.opcode(opcode),
-		.instruction_type(control_signals.instruction_type)
+		.instruction_type(control_signals.instruction_type),
+		.alloc_rob_entry(control_signals.alloc_rob_entry),
+		.alloc_ldq_entry(control_signals.alloc_ldq_entry),
+		.alloc_stq_entry(control_signals.alloc_stq_entry)
 	);
 endmodule

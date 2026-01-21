@@ -1,5 +1,5 @@
 /*
- * TODO: figure out rs1 source for branch predictions
+ * TODO: figure out rs1 source for JALR target predictions
  * - when we pop off the RAS, we absolutely use that value
  * - when we aren't popping off the RAS, what do we use as a source?  I think
  *   there could be an argument for caching or forwarding LUI and AUIPC values
@@ -7,6 +7,27 @@
  *   and using that when we see that rs1_index for the JALR is the same as the
  *   rd_index for the LUI or AUIPC.
  *   - I think this is a good cook
+ *   - Talking with ChatGPT, it recommends "folding" the two instructions, not
+ *   necessarily caching or forwarding.  Front end logic is specifically
+ *   looking for an AUIPC/LUI followed by a JALR with a matching source
+ *   register.  If the JALR rd overwrites the AUIPC/LUI rd, then the AUIPC/LUI
+ *   does not need to be written to the ROB/RF, as the architectural state
+ *   change is not visible.  This seems to be folding.
+ *     - Supposedly "folding" is a term used for front-end optimization
+ *     without computing the value in execution, and forwarding is using the
+ *     computed value from execution before it writes back.  Since this is
+ *     a front-end optimization, we call it folding.
+ * - when neither of the above cases are viable, we use a branch target buffer
+ *   or an indirect target predictor
+ *   - this is a PC indexed data structure
+ * - of note: ChatGPT mentions using the BTB/ITP for branches as well, as it
+ *   saves us the one or more cycles it takes to decode the instruction where
+ *   we identify it's a branch and construct the immediate value, add the
+ *   immediate to PC, compute our branch prediction and update PC.  all these
+ *   cycles are unavoidable stalls (unless we just load PC+4 in the meantime),
+ *   but the BTB/ITP should provide greater accuracy
+ *   - this is an optimization for WAY later tho, once the out-of-order design
+ *   is proven to be working without it.
  */
 module cpu #(
 	parameter XLEN=32,

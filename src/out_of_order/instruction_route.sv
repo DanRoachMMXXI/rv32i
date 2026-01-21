@@ -1,9 +1,43 @@
 module instruction_route #(parameter XLEN=32, parameter N_ALU_RS, parameter N_AGU_RS, parameter N_BRANCH_RS) (
+	// is the instruction at this stage actually getting executed?
+	// valid should only be 0 in cases where the instruction is flushed or
+	// folded (i.e., the U_TYPE instruction in this stage when an
+	// overwriting JALR is decoded)
+	// TODO: eventually I'll need to figure out how the route/RF stage
+	// knows to flush its U_TYPE instruction when it's supposed to be
+	// folded into a JALR.
+	// Initially, I'm inclined to believe that valid can just be set to
+	// 0 here based on the decoded signals in the decode stage, but timing
+	// analysis will need to validate that approach to ensure it's not
+	// causing too great of a delay.
+	// I have written this module such that valid is only used at the very
+	// end of each logic chain to minimize the impact that its dependency
+	// on decode logic can have, still will need to analyze tho.
+	input logic			valid,
+
+	// these come from decode
 	input logic [1:0]		instruction_type,
+	// TODO: ideally come up with less repetitive names for these signals
+	input logic			ctl_alloc_rob_entry,
+	input logic			ctl_alloc_ldq_entry,
+	input logic			ctl_alloc_stq_entry,
+
+	input logic			rob_full,
+	input logic			ldq_full,
+	input logic			stq_full,
+
+	// TODO: ensure nothing is allocated or routed if flush is set
+	input logic			flush,	// was this instruction misspeculated?
 
 	input logic [N_ALU_RS-1:0]	alu_rs_busy,
 	input logic [N_AGU_RS-1:0]	agu_rs_busy,
 	input logic [N_BRANCH_RS-1:0]	branch_rs_busy,
+
+	// these signals actually go to the ROB/LDQ/STQ to tell them to
+	// allocate an entry
+	output logic			alloc_rob_entry,
+	output logic			alloc_ldq_entry,
+	output logic			alloc_stq_entry,
 
 	output logic [N_ALU_RS-1:0]	alu_rs_route,
 	output logic [N_AGU_RS-1:0]	agu_rs_route,
@@ -11,6 +45,13 @@ module instruction_route #(parameter XLEN=32, parameter N_ALU_RS, parameter N_AG
 
 	output logic			stall
 	);
+
+	logic rs_type_alu;
+	logic rs_type_agu;
+	logic rs_type_branch;
+	assign rs_type_alu = (instruction_type == 'b00);
+	assign rs_type_agu = (instruction_type[1]);	// 'b10 or 'b11
+	assign rs_type_branch = (instruction_type == 'b01);
 
 	// using lsb fixed priority arbiters to route the instruction to the
 	// available reservation station with the lowest index (lowest index
@@ -53,28 +94,65 @@ module instruction_route #(parameter XLEN=32, parameter N_ALU_RS, parameter N_AG
 		end
 	endgenerate
 
-	assign alu_rs_route = alu_rs_arbiter_out & {N_ALU_RS{instruction_type == 'b00}};
-	assign branch_rs_route = branch_rs_arbiter_out & {N_BRANCH_RS{instruction_type == 'b01}};
-	assign agu_rs_route = agu_rs_arbiter_out & {N_AGU_RS{instruction_type[1]}};	// 'b10 or 'b11
+	// we use the valid bit to ensure no reservation stations are enabled
+	// if no instruction is actually being issued
+	assign alu_rs_route = alu_rs_arbiter_out
+		& {N_ALU_RS{rs_type_alu}}
+		& {N_ALU_RS{valid}};
+	assign branch_rs_route = branch_rs_arbiter_out
+		& {N_BRANCH_RS{rs_type_branch}}
+		& {N_BRANCH_RS{valid}};
+	assign agu_rs_route = agu_rs_arbiter_out
+		& {N_AGU_RS{rs_type_agu}}
+		& {N_AGU_RS{valid}};
 
-	always_comb begin
-		unique case (instruction_type)
-			'b00:	// ALU
-				stall = &alu_rs_busy;	// stall if all reservation stations are busy
-			'b01:	// branch
-				stall = &branch_rs_busy;	// stall if all reservation stations are busy
-			'b10,	// load
-			'b11:	// store
-				stall = &agu_rs_busy;	// stall if all reservation stations are busy
-		endcase
-	end
+	// stall logic
+
+	// these signals determine if we need to stall based on the
+	// availability of dependent buffers
+	logic stall_rob_full;
+	logic stall_ldq_full;
+	logic stall_stq_full;
+
+	assign stall_rob_full = ctl_alloc_rob_entry && rob_full;
+	assign stall_ldq_full = ctl_alloc_ldq_entry && ldq_full;
+	assign stall_stq_full = ctl_alloc_stq_entry && stq_full;
+
+	// these signals determine if we need to stall based on the
+	// availability of reservation stations
+	logic stall_no_available_alu_rs;
+	logic stall_no_available_agu_rs;
+	logic stall_no_available_branch_rs;
+
+	assign stall_no_available_alu_rs = &alu_rs_busy && rs_type_alu;
+	assign stall_no_available_agu_rs = &agu_rs_busy && rs_type_agu;
+	assign stall_no_available_branch_rs = &branch_rs_busy && rs_type_branch;
+
+	// the only reason I'm making this internal signal is that I'm trying
+	// VERY HARD to make sure valid is only used at the end of each logic
+	// chain
+	logic stall_for_any_reason;
+	assign stall_for_any_reason = (
+		stall_rob_full
+		|| stall_ldq_full
+		|| stall_stq_full
+		|| stall_no_available_alu_rs
+		|| stall_no_available_agu_rs
+		|| stall_no_available_branch_rs
+	);
+
+	// stall if the instruction is valid and any of the reasons to
+	// possibly stall are actually met
+	assign stall = valid && stall_for_any_reason;
+
+	// we don't allocate an entry if the instruction isn't being issued
+	assign alloc_rob_entry = valid && (ctl_alloc_rob_entry && !stall_for_any_reason);
+	assign alloc_ldq_entry = valid && (ctl_alloc_ldq_entry && !stall_for_any_reason);
+	assign alloc_stq_entry = valid && (ctl_alloc_stq_entry && !stall_for_any_reason);
 endmodule
 
 module operand_route #(parameter XLEN=32, parameter ROB_SIZE=64, parameter ROB_TAG_WIDTH=6) (
 	input logic [6:0]	opcode,
-
-	input logic [4:0]	rs1_index,
-	input logic [4:0]	rs2_index,
 
 	// inputs from register file
 	input logic [XLEN-1:0]			rs1,
@@ -135,17 +213,9 @@ module operand_route #(parameter XLEN=32, parameter ROB_SIZE=64, parameter ROB_T
 	// operand 1 routing
 	always_comb begin
 		unique case (opcode)
-			'b0110111:	// LUI
-			begin
-				q1_valid = 0;
-				q1 = 0;
-				v1 = 0;	// this is the actual value
-			end
-
 			// For these instructions, the value of the program
 			// counter is used as the first operand.
 			'b1101111,	// JAL
-			'b1100011,	// B_TYPE
 			'b0010111:	// AUIPC
 			begin
 				q1_valid = 0;
@@ -158,6 +228,7 @@ module operand_route #(parameter XLEN=32, parameter ROB_SIZE=64, parameter ROB_T
 			'b0010011,	// I_TYPE_ALU
 			'b0000011,	// I_TYPE_LOAD
 			'b1100111,	// I_TYPE_JALR
+			'b1100011,	// B_TYPE
 			'b0100011:	// S_TYPE
 			begin
 				q1_valid = q1_valid_rs1;
@@ -165,11 +236,12 @@ module operand_route #(parameter XLEN=32, parameter ROB_SIZE=64, parameter ROB_T
 				v1 = v1_rs1;
 			end
 
+			'b0110111,	// LUI
 			'b0000000:	// inserted stall, will not be routed to anything
 			begin
 				q1_valid = 0;
 				q1 = 0;
-				v1 = 0;
+				v1 = 0;	// for LUI, this is the actual value
 			end
 		endcase
 

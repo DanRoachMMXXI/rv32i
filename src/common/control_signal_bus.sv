@@ -8,9 +8,10 @@
  * bus, as you can just assign 0 to it.
  */
 typedef struct packed {
-	// carry forward the opcode in cases where specific instructions need
-	// to be checked
+	// carry forward the opcode and funct3 in cases where specific
+	// instructions need to be checked
 	logic [6:0] opcode;
+	logic [2:0] funct3;
 
 	// register indices
 	logic [4:0] rs1_index;
@@ -65,4 +66,8 @@ typedef struct packed {
 	// 10 - load
 	// 11 - store
 	logic [1:0] instruction_type;
+
+	logic alloc_rob_entry;
+	logic alloc_ldq_entry;
+	logic alloc_stq_entry;
 } control_signal_bus;

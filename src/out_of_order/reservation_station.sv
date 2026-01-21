@@ -24,6 +24,7 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	// need to store these to execute branches
 	// they should be optimized away during synthesis for the other
 	// functional units that aren't using them
+	// TODO: update after updating branch_functional_unit
 	input logic [XLEN-1:0]		pc_plus_four_in,
 	input logic [XLEN-1:0]		predicted_next_instruction_in,
 	input logic			branch_prediction_in,
@@ -32,6 +33,9 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	input wire [TAG_WIDTH-1:0]	cdb_rob_tag,
 	input wire [XLEN-1:0]		cdb_data,
 
+	// TODO: the valid_out signals don't really need to be outputs,
+	// nothing reads them as the interaction with the FU is driven by
+	// ready_to_execute
 	output logic			q1_valid_out,
 	output logic [TAG_WIDTH-1:0]	q1_out,
 	output logic [XLEN-1:0]		v1_out,

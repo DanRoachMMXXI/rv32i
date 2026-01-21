@@ -1,17 +1,34 @@
+/*
+ * For B_TYPE and JAL, branch_target is already computed.
+ * For JAL, literally nothing needs to be executed, and it shouldn't be issued
+ * to this FU.
+ * For JALR, the computation of branch_target is all that needs to happen, and
+ * since a register value is a source for this, it may need to get rs1 from
+ * the CDB.
+ * For branches, the computation that has to be performed is the comparison of
+ * two register values, so rs1 and rs2 may both need to be retrieved from the
+ * CDB.
+ *
+ * So basically, the operation performed on the operands is completely
+ * different depending on whether this is a JALR or a branch.
+ *
+ * TODO: ensure JAL stores pc+4 in rob_value when it's issued
+ */
 module branch_functional_unit #(parameter XLEN=32) (
-	input logic [XLEN-1:0]	v1,	// rs1 or pc+4
-	input logic [XLEN-1:0]	v2,	// immediate
+	input logic [XLEN-1:0]	v1,	// rs1
+	input logic [XLEN-1:0]	v2,	// immediate for JALR, rs2 for B_TYPE
 
 	input logic [XLEN-1:0]	pc_plus_four,
+	input logic [XLEN-1:0]	pc_plus_immediate,
 	input logic [XLEN-1:0]	predicted_next_instruction,
 
-	input logic		jump,
+	input logic [2:0]	funct3,
+	input logic		jalr,
 	input logic		branch,
-	input logic		branch_if_zero,
-	input logic		branch_prediction,
+	// input logic		branch_prediction,
 
 	output logic [XLEN-1:0]	next_instruction,
-	output logic		branch_mispredicted,
+	output logic		redirect_mispredicted,
 
 	// reservation stations signals
 	input logic		ready_to_execute,
@@ -20,27 +37,56 @@ module branch_functional_unit #(parameter XLEN=32) (
 	output logic		write_to_buffer
 	);
 
-	// just computing these two signals instead of instantiating an ALU
-	logic [XLEN-1:0] evaluated_branch_target;
-	assign evaluated_branch_target = v1 + v2;
-	logic zero;
-	assign zero = evaluated_branch_target == 0;
+	// JALR target computation
+	logic [XLEN-1:0]	jalr_target;
+	assign jalr_target = v1 + v2;	// unsure if I need to clear bit 0 or raise an exception
 
-	branch_evaluator #(.XLEN(XLEN)) branch_evaluator (
-		// inputs
-		.pc_plus_four(pc_plus_four),
-		.predicted_next_instruction(predicted_next_instruction),
-		.evaluated_branch_target(evaluated_branch_target),
-		.jump(jump),
-		.branch(branch),
-		.branch_if_zero(branch_if_zero),
-		.zero(zero),
-		.branch_prediction(branch_prediction),
+	// B_TYPE comparison
+	// TODO: test EXTENSIVELY as you rewrote the branching logic
 
-		// outputs
-		.next_instruction(next_instruction),
-		.branch_mispredicted(branch_mispredicted)
-	);
+	// might be overkill defining these signals but I'm just ensuring it
+	// gets synthesized how I want it
+	logic			v1_eq_v2;
+	logic 			v1_lt_v2;
+	logic 			v1_ltu_v2;
+	logic 			branch_comparison;	// the comparison used will be routed to this signal
+	logic 			branch_taken;
+	logic [XLEN-1:0]	branch_target;
+
+	assign v1_eq_v2 = (v1 == v2);
+	assign v1_lt_v2 = ($signed(v1) < $signed(v2));
+	assign v1_ltu_v2 = (v1 < v2);
+
+
+	always_comb begin
+		case (funct3)
+			3'b000,	// beq
+			3'b001:	// bne
+				branch_comparison = v1_eq_v2;
+			3'b100,	// blt
+			3'b101:	// bge
+				branch_comparison = v1_lt_v2;
+			3'b110,	// bltu
+			3'b111:	// bgeu
+				branch_comparison = v1_ltu_v2;
+			default:	// invalid funct3, so for sure branch_taken will not be read
+				branch_comparison = 0;
+		endcase
+	end
+	assign branch_taken = branch_comparison ^ funct3[0];
+	assign branch_target = branch_taken ? pc_plus_immediate : pc_plus_four;
+
+	// select next_instruction based on jalr or branch, and evaluate
+	// misprediction
+	always_comb begin
+		if (jalr)
+			next_instruction = jalr_target;
+		else if (branch)
+			next_instruction = branch_target;
+		else
+			next_instruction = {XLEN{1'bx}};
+	end
+	assign redirect_mispredicted = next_instruction != predicted_next_instruction;
 
 	// since FU is only attached to one RS, we accept when the operands
 	// are ready

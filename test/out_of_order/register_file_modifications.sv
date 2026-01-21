@@ -10,7 +10,7 @@ module test_rf_rob_tags;
 
 	logic [4:0]			rs1_index;
 	logic [4:0]			rs2_index;
-	logic				rob_entry_alloc;
+	logic				alloc_rob_entry;
 	logic [4:0]			rob_alloc_rd_index;
 	logic [ROB_TAG_WIDTH-1:0]	rob_alloc_tag;
 	logic [4:0]			rd_index;
@@ -29,7 +29,7 @@ module test_rf_rob_tags;
 		.reset(reset),
 		.rs1_index(rs1_index),
 		.rs2_index(rs2_index),
-		.rob_entry_alloc(rob_entry_alloc),
+		.alloc_rob_entry(alloc_rob_entry),
 		.rob_alloc_rd_index(rob_alloc_rd_index),
 		.rob_alloc_tag(rob_alloc_tag),
 		.rd_index(rd_index),
@@ -57,7 +57,7 @@ module test_rf_rob_tags;
 		# 10	// wait for reset
 
 		// put a ROB tag in x3
-		rob_entry_alloc = 1;
+		alloc_rob_entry = 1;
 		rob_alloc_rd_index = 3;
 		rob_alloc_tag = 'hB;
 
@@ -66,7 +66,7 @@ module test_rf_rob_tags;
 		assert(rs1_rob_tag == 'hB);
 		assert(rs1_rob_tag_valid == 1);
 
-		rob_entry_alloc = 0;
+		alloc_rob_entry = 0;
 
 		// now we'll commit an old instruction, so tag 'h9
 		write_en = 1;
@@ -95,7 +95,7 @@ module test_rf_rob_tags;
 		// value is what's stored in the register itself.
 
 		// so we'll write a value to x5
-		rob_entry_alloc = 1;
+		alloc_rob_entry = 1;
 		rob_alloc_rd_index = 5;
 		rob_alloc_tag = 'hF;
 		// fuck it we'll read from rs2 for funsies

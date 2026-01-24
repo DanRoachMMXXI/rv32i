@@ -11,18 +11,17 @@
  *
  * So basically, the operation performed on the operands is completely
  * different depending on whether this is a JALR or a branch.
- *
- * TODO: ensure JAL stores pc+4 in rob_value when it's issued
  */
 module branch_functional_unit #(parameter XLEN=32) (
 	input logic [XLEN-1:0]	v1,	// rs1
 	input logic [XLEN-1:0]	v2,	// immediate for JALR, rs2 for B_TYPE
 
-	input logic [XLEN-1:0]	pc_plus_four,
-	input logic [XLEN-1:0]	pc_plus_immediate,
+	input logic [XLEN-1:0]	pc,
+	input logic [XLEN-1:0]	immediate,
 	input logic [XLEN-1:0]	predicted_next_instruction,
 
 	input logic [2:0]	funct3,
+	input logic		instruction_length,
 	input logic		jalr,
 	input logic		branch,
 	// input logic		branch_prediction,
@@ -36,6 +35,9 @@ module branch_functional_unit #(parameter XLEN=32) (
 
 	output logic		write_to_buffer
 	);
+
+	logic [XLEN-1:0]	next_pc;
+	assign next_pc = pc + (instruction_length ? XLEN'(4) : XLEN'(2));
 
 	// JALR target computation
 	logic [XLEN-1:0]	jalr_target;
@@ -74,7 +76,7 @@ module branch_functional_unit #(parameter XLEN=32) (
 		endcase
 	end
 	assign branch_taken = branch_comparison ^ funct3[0];
-	assign branch_target = branch_taken ? pc_plus_immediate : pc_plus_four;
+	assign branch_target = branch_taken ? (pc + immediate) : next_pc;
 
 	// select next_instruction based on jalr or branch, and evaluate
 	// misprediction

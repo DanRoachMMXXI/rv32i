@@ -1,5 +1,5 @@
 module branch_predictor #(parameter XLEN=32) (
-	input logic [XLEN-1:0] pc_plus_four,	// currently used to determine whether jump is forward or backward
+	input logic [XLEN-1:0] pc,	// currently used to determine whether jump is forward or backward
 						// will be used to reference branch history
 	input logic [XLEN-1:0] branch_target,
 
@@ -27,7 +27,7 @@ module branch_predictor #(parameter XLEN=32) (
 			// for now, we'll do static:
 			// predict taken if immediate is negative, predict not
 			// taken if immediate is positive
-			if (branch_target < pc_plus_four)
+			if (branch_target < pc)
 				branch_predicted_taken = 1;
 			else
 				branch_predicted_taken = 0;

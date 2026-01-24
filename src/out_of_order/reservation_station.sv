@@ -23,9 +23,11 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 
 	// need to store these to execute branches
 	// they should be optimized away during synthesis for the other
-	// functional units that aren't using them
-	// TODO: update after updating branch_functional_unit
-	input logic [XLEN-1:0]		pc_plus_four_in,
+	// functional units that aren't using them, so for reservation
+	// stations connected to other functional units, just be sure to wire
+	// these inputs to 0 and leave the corresponding outputs disconnected.
+	input logic [XLEN-1:0]		pc_in,
+	input logic [XLEN-1:0]		immediate_in,
 	input logic [XLEN-1:0]		predicted_next_instruction_in,
 	input logic			branch_prediction_in,
 
@@ -45,7 +47,8 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	output control_signal_bus	control_signals_out,
 	output logic [TAG_WIDTH-1:0]	rob_tag_out,
 
-	output logic [XLEN-1:0]		pc_plus_four_out,
+	output logic [XLEN-1:0]		pc_out,
+	output logic [XLEN-1:0]		immediate_out,
 	output logic [XLEN-1:0]		predicted_next_instruction_out,
 	output logic			branch_prediction_out,
 
@@ -88,7 +91,7 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 			rob_tag_out <= 0;
 			busy <= 0;
 			dispatched <= 0;
-			pc_plus_four_out <= 0;
+			pc_out <= 0;
 			predicted_next_instruction_out <= 0;
 			branch_prediction_out <= 0;
 		end else begin
@@ -115,7 +118,7 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 			if (enable) begin
 				rob_tag_out <= rob_tag_in;
 				control_signals_out <= control_signals_in;
-				pc_plus_four_out <= pc_plus_four_in;
+				pc_out <= pc_in;
 				predicted_next_instruction_out <= predicted_next_instruction_in;
 				branch_prediction_out <= branch_prediction_in;
 				busy <= 1;	// busy because it has stored an instruction!

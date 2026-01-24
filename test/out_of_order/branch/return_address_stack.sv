@@ -21,14 +21,17 @@ module test_return_address_stack;
 	logic checkpoint;
 	logic restore_checkpoint;
 
-	logic valid_out;
 	logic [XLEN-1:0]	address_out;
+
+	logic	empty;
+	logic	full;
 
 	// debug outputs for the return_address_stack
 	logic [STACK_SIZE-1:0][XLEN-1:0]	stack;
-	logic [STACK_SIZE-1:0]			stack_valid;
 	logic [$clog2(STACK_SIZE)-1:0]		stack_pointer;
 	logic [$clog2(STACK_SIZE)-1:0]		sp_checkpoint;
+	logic [$clog2(STACK_SIZE):0]		n_entries;
+	logic [$clog2(STACK_SIZE):0]		n_entries_cp;
 
 	return_address_stack #(.XLEN(XLEN), .STACK_SIZE(STACK_SIZE)) ras (
 		.clk(clk),
@@ -42,13 +45,15 @@ module test_return_address_stack;
 		.restore_checkpoint(restore_checkpoint),
 
 		.address_out(address_out),
-		.valid_out(valid_out),
+		.empty(empty),
+		.full(full),
 
 		// debug outputs
 		.stack(stack),
-		.stack_valid(stack_valid),
 		.stack_pointer(stack_pointer),
-		.sp_checkpoint(sp_checkpoint)
+		.sp_checkpoint(sp_checkpoint),
+		.n_entries(n_entries),
+		.n_entries_cp(n_entries_cp)
 	);
 
 	ras_control ras_control (
@@ -76,8 +81,8 @@ module test_return_address_stack;
 		jump = 0;
 		jalr = 0;
 		# 10
-		assert(valid_out == 0);	// this is the actual interface to the module
-		assert(stack_valid == 'h0000);	// but I'll be checking the internal stack signals to verify the stack is always in the expected state
+		assert(empty == 1);	// this is the actual interface to the module
+		assert(n_entries == 0);	// but I'll be checking the internal stack signals to verify the stack is always in the expected state
 		assert(stack_pointer == 0);
 
 		jump = 1;
@@ -86,8 +91,7 @@ module test_return_address_stack;
 		address_in = 'hABCD;
 		# 10
 		// rs1_index and rd_index are still 0, so nothing should happen on the RAS
-		assert(valid_out == 0);	// this is the actual interface to the module
-		assert(stack_valid == 'h0000);	// but I'll be checking the internal stack signals to verify the stack is always in the expected state
+		assert(n_entries == 0);	// but I'll be checking the internal stack signals to verify the stack is always in the expected state
 		assert(stack_pointer == 0);
 
 		// now we set rd_index to a conventional return address register
@@ -97,8 +101,7 @@ module test_return_address_stack;
 		assert(push == 1);
 		assert(pop == 0);
 		# 8	// wait the rest of the clock cycle
-		assert(valid_out == 0);	// we didn't pop anything
-		assert(stack_valid == 'h0001);	// an entry should be allocated in the stack
+		assert(n_entries == 1);	// an entry should be allocated in the stack
 		assert(stack_pointer == 1);	// stack pointer should have been incremented
 
 		// now we'll simply pop that off the stack
@@ -108,10 +111,9 @@ module test_return_address_stack;
 		# 2	// not waiting full cycle, check combinational control logic
 		assert(push == 0);
 		assert(pop == 1);
+		assert(address_out == 'hABCD);	// RAS pop read is combinational
 		# 8
-		assert(valid_out == 1);	// we popped off the stack, so address_out is valid
-		assert(address_out == 'hABCD);
-		assert(stack_valid == 'h0000);
+		assert(n_entries == 0);
 		assert(stack_pointer == 0);
 
 		// now let's push a few things onto the stack, some point
@@ -121,14 +123,13 @@ module test_return_address_stack;
 		rs1_index = 10;	// this is what it might look like if rs1_index got a value from AUIPC or LUI
 		address_in = 'hAAA1;
 		# 10
-		assert(valid_out == 0);
-		assert(stack_valid == 'h0001);
+		assert(n_entries == 1);
 		assert(stack[0] == 'hAAA1);
 		assert(stack_pointer == 1);
 
 		address_in = 'hAAA2;
 		# 10
-		assert(stack_valid == 'h0003);
+		assert(n_entries == 2);
 		assert(stack[1] == 'hAAA2);
 		assert(stack_pointer == 2);
 
@@ -146,8 +147,7 @@ module test_return_address_stack;
 		address_in = 'hAAA4;
 		# 10
 
-		assert(valid_out == 0);
-		assert(stack_valid == 'h000F);	// we have placed 4 elements on the stack
+		assert(n_entries == 4);	// we have placed 4 elements on the stack
 		assert(stack[0] == 'hAAA1);
 		assert(stack[1] == 'hAAA2);
 		assert(stack[2] == 'hAAA3);
@@ -161,10 +161,9 @@ module test_return_address_stack;
 		# 2
 		assert(push == 1);
 		assert(pop == 1);
-		# 8
-		assert(valid_out == 1);
 		assert(address_out == 'hAAA4);	// the address that was stored at index 3 should be popped
-		assert(stack_valid == 'h000F);	// we have placed 4 elements on the stack
+		# 8
+		assert(n_entries == 4);	// we have placed 4 elements on the stack
 		assert(stack[0] == 'hAAA1);
 		assert(stack[1] == 'hAAA2);
 		assert(stack[2] == 'hAAA3);
@@ -175,7 +174,6 @@ module test_return_address_stack;
 		jump = 0;
 		restore_checkpoint = 1;
 		# 10
-		assert(valid_out == 0);
 		assert(stack_pointer == 2);
 
 		restore_checkpoint = 0;
@@ -188,7 +186,7 @@ module test_return_address_stack;
 
 		// TODO: pop remaining two values off for completeness I guess,
 		// and I guess try popping values off the empty stack and
-		// verify valid_out is 0.
+		// verify n_entries drops to 0.
 
 		$display("All assertions passed.");
 		$finish();

@@ -221,7 +221,7 @@ instruction_route ir:
 	$(VERILATOR) --top-module test_instruction_route test/out_of_order/instruction_route.sv src/out_of_order/instruction_route.sv src/common/fixed_priority_arbiter.sv
 
 full_branch_fu bfu:
-	$(VERILATOR) --top-module test_full_branch_fu src/common/*.sv test/out_of_order/branch/full_branch_fu.sv src/out_of_order/branch/*.sv src/out_of_order/{instruction_route,cdb_arbiter,functional_unit_output_buffer,reorder_buffer,reservation_station,rf_writeback}.sv
+	$(VERILATOR) --top-module test_full_branch_fu src/common/*.sv test/out_of_order/branch/full_branch_fu.sv src/out_of_order/branch/*.sv src/out_of_order/{instruction_route,cdb_arbiter,functional_unit_output_buffer,reorder_buffer,reservation_station,rf_writeback,pc_mux}.sv
 
 return_address_stack ras:
 	$(VERILATOR) test/out_of_order/branch/return_address_stack.sv src/out_of_order/branch/return_address_stack.sv

@@ -10,7 +10,7 @@ module pc_select #(parameter XLEN=32) (
 	);
 
 	always_comb
-		// if the branch was mispredictedd, we need to set pc to the
+		// if the branch was mispredicted, we need to set pc to the
 		// correct next instruction
 		if (evaluated_branch_mispredicted)
 			pc_next = evaluated_next_instruction;

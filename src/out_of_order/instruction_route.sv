@@ -16,7 +16,20 @@ module instruction_route #(parameter XLEN=32, parameter N_ALU_RS, parameter N_AG
 	input logic			valid,
 
 	// these come from decode
+	// branch and jalr need to be consumed because we do not want to route
+	// a JAL to the functional unit.  we already have the value, and that
+	// must be written to the ROB when the entry is allocated.
+	// I've opted to assess this in the routing stage, because
+	// instruction_type still needs to be the branch value for JALs still
+	// need to be committed the same as branches and JALRs, which refers
+	// to instruction_type to decide how to commit the ROB entry.
+	// similarly, we need to know if this is a U type instruction, which
+	// does not need to be issued to an ALU functional unit.  the value is
+	// already available, and should be immediately written to the ROB
 	input logic [1:0]		instruction_type,
+	input logic			ctl_branch,
+	input logic			ctl_jalr,
+	input logic			ctl_u_type,
 	// TODO: ideally come up with less repetitive names for these signals
 	input logic			ctl_alloc_rob_entry,
 	input logic			ctl_alloc_ldq_entry,
@@ -49,9 +62,12 @@ module instruction_route #(parameter XLEN=32, parameter N_ALU_RS, parameter N_AG
 	logic rs_type_alu;
 	logic rs_type_agu;
 	logic rs_type_branch;
-	assign rs_type_alu = (instruction_type == 'b00);
+	assign rs_type_alu = (instruction_type == 'b00)
+		&& !ctl_u_type;	// don't issue a LUI or AUIPC to the ALU unit
 	assign rs_type_agu = (instruction_type[1]);	// 'b10 or 'b11
-	assign rs_type_branch = (instruction_type == 'b01);
+	assign rs_type_branch = (instruction_type == 'b01)
+		&& (ctl_jalr || ctl_branch);	// only route to the FU if the instruction actually needs to be executed.
+						// JALs do not need to be executed.
 
 	// using lsb fixed priority arbiters to route the instruction to the
 	// available reservation station with the lowest index (lowest index
@@ -98,12 +114,15 @@ module instruction_route #(parameter XLEN=32, parameter N_ALU_RS, parameter N_AG
 	// if no instruction is actually being issued
 	assign alu_rs_route = alu_rs_arbiter_out
 		& {N_ALU_RS{rs_type_alu}}
+		& {N_ALU_RS{!flush}}
 		& {N_ALU_RS{valid}};
 	assign branch_rs_route = branch_rs_arbiter_out
 		& {N_BRANCH_RS{rs_type_branch}}
+		& {N_ALU_RS{!flush}}
 		& {N_BRANCH_RS{valid}};
 	assign agu_rs_route = agu_rs_arbiter_out
 		& {N_AGU_RS{rs_type_agu}}
+		& {N_ALU_RS{!flush}}
 		& {N_AGU_RS{valid}};
 
 	// stall logic
@@ -145,10 +164,11 @@ module instruction_route #(parameter XLEN=32, parameter N_ALU_RS, parameter N_AG
 	// possibly stall are actually met
 	assign stall = valid && stall_for_any_reason;
 
-	// we don't allocate an entry if the instruction isn't being issued
-	assign alloc_rob_entry = valid && (ctl_alloc_rob_entry && !stall_for_any_reason);
-	assign alloc_ldq_entry = valid && (ctl_alloc_ldq_entry && !stall_for_any_reason);
-	assign alloc_stq_entry = valid && (ctl_alloc_stq_entry && !stall_for_any_reason);
+	// we don't allocate an entry if the instruction is being flushed, or
+	// isn't being issued for any other reason
+	assign alloc_rob_entry = valid && (ctl_alloc_rob_entry && !flush && !stall_for_any_reason);
+	assign alloc_ldq_entry = valid && (ctl_alloc_ldq_entry && !flush && !stall_for_any_reason);
+	assign alloc_stq_entry = valid && (ctl_alloc_stq_entry && !flush && !stall_for_any_reason);
 endmodule
 
 module operand_route #(parameter XLEN=32, parameter ROB_SIZE=64, parameter ROB_TAG_WIDTH=6) (
@@ -279,5 +299,61 @@ module operand_route #(parameter XLEN=32, parameter ROB_SIZE=64, parameter ROB_T
 				v2 = 0;
 			end
 		endcase
+	end
+endmodule
+
+// instructions that commit immediately:
+// JAL
+// JALR
+// LUI
+// AUIPC
+// S_TYPE with data ready
+module rob_data_in_route #(parameter XLEN=32) (
+	input logic [1:0]	instruction_type,
+	// control signals from decode
+	input logic		branch,
+	input logic		jalr,
+	input logic		lui,
+	input logic		auipc,
+
+	input logic		rs2_rob_tag_valid,
+	input logic [XLEN-1:0]	rs2,
+
+	input logic [XLEN-1:0]	pc,
+	input logic		instruction_length,
+	input logic [XLEN-1:0]	immediate,
+
+	output logic [XLEN-1:0]	value,
+	output logic rob_data_ready_in
+);
+
+	logic [XLEN-1:0]	next_pc;
+	assign next_pc = pc + (instruction_length ? XLEN'(4) : XLEN'(2));
+
+	logic store_with_data_ready;
+	assign store_with_data_ready = ((instruction_type == 2'b11) && !rs2_rob_tag_valid);
+
+	// TODO: analysis on whether this should just be decoded in decode
+	// stage
+	logic jal;
+	assign jal = (instruction_type == 2'b01 && !branch && !jalr);
+
+	// we DON'T want to set data_ready for JALR and branches, cause these
+	// jumps still needs to execute - the data will be stored in the
+	// next_instruction field
+	assign rob_data_ready_in = jal || lui || auipc || store_with_data_ready;
+
+	always_comb begin
+		if ((instruction_type == 2'b01) && !branch) begin	// JAL or JALR
+			value = next_pc;
+		end else if (lui) begin
+			value = immediate;
+		end else if (auipc) begin
+			value = pc + immediate;
+		end else if (store_with_data_ready) begin
+			value = rs2;
+		end else begin
+			value = {XLEN{1'bX}};
+		end
 	end
 endmodule

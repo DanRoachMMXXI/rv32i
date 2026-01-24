@@ -175,6 +175,10 @@ module reorder_buffer #(
 				// so we don't want to overwrite that with the
 				// address to be loaded - that's stored in the
 				// load buffer.
+				// TODO: evaluate whether the updating of the
+				// destination field is even necessary.  The
+				// stores are fired from the store queue, and
+				// will use that address as far as I remember.
 				rob_address_valid[agu_address_rob_tag] <= 1;
 				rob_destination[agu_address_rob_tag] <= agu_address_data;
 			end
@@ -237,20 +241,28 @@ endmodule
 // - reservation_station_reset probably takes in the flush output from this
 //   module and checks if the bit at index rs_rob_tag is set
 // TODO: also remember to flush instructions in the decode/RF stages
-module buffer_flusher #(parameter BUF_SIZE, parameter TAG_WIDTH, parameter LDQ_SIZE, parameter STQ_SIZE) (
+module buffer_flusher #(parameter XLEN=32, parameter BUF_SIZE, parameter TAG_WIDTH, parameter LDQ_SIZE, parameter STQ_SIZE) (
 	// decided to not take in the valid signal for now, since I know
 	// I designed the buffer to only update entries that are valid
-	input logic [BUF_SIZE-1:0]	rob_branch_mispredict,
-	input logic [BUF_SIZE-1:0]	rob_exception,
-	input logic [TAG_WIDTH-1:0]	rob_head,
-	input logic [TAG_WIDTH-1:0]	rob_tail,
+	input logic [BUF_SIZE-1:0]			rob_branch_mispredict,
+	input logic [BUF_SIZE-1:0]			rob_exception,
+	input logic [TAG_WIDTH-1:0]			rob_head,
+	input logic [TAG_WIDTH-1:0]			rob_tail,
+	// we have to use the identified exception to select the next
+	// instruction to execute
+	input logic [BUF_SIZE-1:0][XLEN-1:0]		rob_next_instruction,
 
 	input logic [LDQ_SIZE-1:0]			ldq_valid,
 	input logic [LDQ_SIZE-1:0][TAG_WIDTH-1:0]	ldq_rob_tag,
 	input logic [STQ_SIZE-1:0]			stq_valid,
 	input logic [STQ_SIZE-1:0][TAG_WIDTH-1:0]	stq_rob_tag,
 
-	output logic [BUF_SIZE-1:0]	flush,
+	output logic			flush,	// bool - are we flushing the pipeline?  intended for front end
+
+	// which instruction needs to be re-executed?
+	output logic [XLEN-1:0]		exception_next_instruction,
+
+	output logic [BUF_SIZE-1:0]	rob_flush,	// bitmask for the ROB entries that need to be flushed
 	output logic [TAG_WIDTH-1:0]	rob_new_tail,
 
 	output logic [LDQ_SIZE-1:0]	flush_ldq,
@@ -271,8 +283,8 @@ module buffer_flusher #(parameter BUF_SIZE, parameter TAG_WIDTH, parameter LDQ_S
 	logic [TAG_WIDTH-1:0]	rob_rotated_tail;
 	logic [BUF_SIZE-1:0]	rob_rotated_flush;
 
-	logic			need_to_flush;	// bad name, but wasted too much time thinking of a good name
 	logic [TAG_WIDTH-1:0]	rotated_oldest_exception_index;
+	logic [TAG_WIDTH-1:0]	oldest_exception_index;
 	logic [TAG_WIDTH-1:0]	rotated_flush_start_index;	// what index does the flush actually start from?
 
 	assign rotated_mispredict = (rob_branch_mispredict >> rob_head) | (rob_branch_mispredict << (BUF_SIZE - rob_head));
@@ -283,8 +295,11 @@ module buffer_flusher #(parameter BUF_SIZE, parameter TAG_WIDTH, parameter LDQ_S
 	lsb_priority_encoder #(.N(BUF_SIZE)) oldest_exception_finder /* idk man */ (
 		.in(rotated_mispredict_or_exception),
 		.out(rotated_oldest_exception_index),
-		.valid(need_to_flush)
+		.valid(flush)
 	);
+
+	assign oldest_exception_index = rotated_oldest_exception_index + rob_head;
+	assign exception_next_instruction = rob_next_instruction[oldest_exception_index];
 
 	// if the instruction that caused the flush was an exception, the
 	// flush begins at the index of that instruction.  if the flush was
@@ -297,11 +312,11 @@ module buffer_flusher #(parameter BUF_SIZE, parameter TAG_WIDTH, parameter LDQ_S
 	always_comb begin
 		for (i = 0; i < BUF_SIZE; i = i + 1) begin
 			rob_rotated_flush[i] = (i >= rotated_flush_start_index) && (i < rob_rotated_tail)	// bound check
-				&& need_to_flush;	// is there actually a need to flush
+				&& flush;	// is there actually a need to flush
 		end
 	end
 
-	assign flush = (rob_rotated_flush << rob_head) | (rob_rotated_flush >> (BUF_SIZE - rob_head));
+	assign rob_flush = (rob_rotated_flush << rob_head) | (rob_rotated_flush >> (BUF_SIZE - rob_head));
 
 	// the new tail is at the oldest instruction that was flushed
 	assign rob_new_tail = rotated_flush_start_index + rob_head;

@@ -13,6 +13,12 @@ typedef struct packed {
 	logic [6:0] opcode;
 	logic [2:0] funct3;
 
+	// boolean to indicate length of the instruction, in case I support
+	// compressed instructions in the future
+	// 0 = 2 bytes (compressed)
+	// 1 = 4 bytes (normal RV32I instruction)
+	logic		instruction_length;
+
 	// register indices
 	logic [4:0] rs1_index;
 	logic [4:0] rs2_index;
@@ -33,6 +39,9 @@ typedef struct packed {
 				// 2: pc + 4 for jump instructions
 
 	// alu control signals
+	// TODO: I think this is the same as funct3, which I am now just
+	// passing directly as a part of this bus, so I need to eliminate the
+	// redundancy
 	logic [2:0] alu_operation;
 	logic sign;	// only used in R type instructions
 
@@ -52,6 +61,13 @@ typedef struct packed {
 				// base is
 				// 0: pc
 				// 1: rs1 for JALR
+
+	logic lui;	// is the instruction specifically LUI - it has to get specifically routed to the ROB
+	logic auipc;	// is the instruction specifically AUIPC - it has to get specifically routed to the ROB
+	logic u_type;	// is the instruction LUI or AUIPC
+	// in the out-of-order design, U_TYPE instructions will not be issued
+	// to a functional unit.  instead, their value will already be
+	// available, and it will be written directly to the reorder buffer.
 
 	// signals to write back to register file or memory
 	logic rf_write_en;

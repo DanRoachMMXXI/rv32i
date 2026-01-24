@@ -15,53 +15,68 @@ module return_address_stack #(parameter XLEN=32, parameter STACK_SIZE=16) (
 
 	input logic checkpoint,	// on branch speculation, take a checkpoint of the current stack pointer
 				// this is NOT when we take a JAL or JALR that interacts with the stack
+				// update: this could be a speculated JALR
 	input logic restore_checkpoint,	// restore the stack pointer to the checkpointed stack pointer
 					// this has to override checkpoint I think
 
 	output logic [XLEN-1:0]	address_out,
-	output logic		valid_out,	// was the value on address_out popped last clock edge?
 
-	// TODO: something about a full stack, either a signal or even just an
-	// assertion would be nice for simulations
+	output logic		empty,
+	output logic		full,
 
 	// debug outputs - I don't think anything is going to read these other
 	// than the tests
 	output logic [STACK_SIZE-1:0][XLEN-1:0]		stack,
-	output logic [STACK_SIZE-1:0]			stack_valid,
 	output logic [$clog2(STACK_SIZE)-1:0]		stack_pointer,
-	output logic [$clog2(STACK_SIZE)-1:0]		sp_checkpoint
+	output logic [$clog2(STACK_SIZE)-1:0]		sp_checkpoint,
+	// n_entries is effectively "how many valid elements are behind the
+	// current stack pointer?"
+	output logic [$clog2(STACK_SIZE):0]		n_entries,	// counter of entries
+	output logic [$clog2(STACK_SIZE):0]		n_entries_cp	// checkpoint for the counter
 	);
 
+	assign empty = (n_entries == 0);
+	assign full = (n_entries == STACK_SIZE);
 
-	// TODO: note how this uses blocking assignments instead of
-	// non-blocking assignments.  this is because the stack supports
-	// performing a push and a pop in the same clock cycle, so it needs to
-	// perform the pop first, followed by the push.  I'd like to address
-	// this in the future.
-	always @(posedge clk) begin
-		// defaults: anything not a pop
-		address_out = 0;
-		valid_out = 0;
+	logic [$clog2(STACK_SIZE)-1:0]	sp_next;
+	assign sp_next = stack_pointer - 1;
 
-		if (restore_checkpoint) begin
-			stack_pointer = sp_checkpoint;
-		end else if (checkpoint) begin
-			sp_checkpoint = stack_pointer;
+	assign address_out = stack[sp_next];
+
+	always_ff @(posedge clk) begin
+		if (!reset) begin
+			stack <= 0;
+			stack_pointer <= 0;
+			sp_checkpoint <= 0;
+
+			n_entries <= 0;
+			n_entries_cp <= 0;
 		end else begin
-			if (pop) begin	// pop
-				address_out = stack[stack_pointer - 1];
-				valid_out = stack_valid[stack_pointer - 1];
-
-				stack[stack_pointer - 1] = 0;
-				stack_valid[stack_pointer - 1] = 0;
-
-				stack_pointer = stack_pointer - 1;
+			if (restore_checkpoint) begin
+				stack_pointer <= sp_checkpoint;
+				n_entries <= n_entries_cp;
+			end else if (checkpoint) begin
+				sp_checkpoint <= stack_pointer;
+				n_entries_cp <= n_entries;
 			end
-	       		if (push) begin	// push
-				stack[stack_pointer] = address_in;
-				stack_valid[stack_pointer] = 1;
 
-				stack_pointer = stack_pointer + 1;
+			if (push && pop) begin
+				stack[sp_next] <= address_in;
+				// stack pointer doesn't change, but if the
+				// stack was empty, the push effectively
+				// "allocated" the entry behind the stack
+				// pointer, so we need to increment our
+				// counter to stay aware that there's "one
+				// valid element behind the stack pointer"
+				n_entries <= empty ? n_entries + 1 : n_entries;
+			end else if (pop) begin
+				stack[sp_next] <= 0;
+				stack_pointer <= sp_next;
+				n_entries <= empty ? 0 : n_entries - 1;
+			end else if (push) begin
+				stack[stack_pointer] <= address_in;
+				stack_pointer <= stack_pointer + 1;
+				n_entries <= full ? STACK_SIZE : n_entries + 1;
 			end
 		end
 	end

@@ -189,6 +189,7 @@ module out_of_order_decode (
 
 	// everything allocates a ROB entry UNLESS we fold instructions (ex:
 	// U type into JALR where JALR overwrites the U type)
+	// TODO ^
 	assign alloc_rob_entry = 1'b1;
 	assign alloc_ldq_entry = (opcode == 'b0000011);	// I_TYPE_LOAD
 	assign alloc_stq_entry = (opcode == 'b0100011);	// S_TYPE
@@ -208,6 +209,10 @@ module instruction_decode #(parameter XLEN=32) (
 
 	assign control_signals.opcode = opcode;
 	assign control_signals.funct3 = funct3;
+
+	// only supporting RV32I instruction set rn, so this can be hardwired
+	// to 1
+	assign control_signals.instruction_length = 1;
 
 	// these values always map to these bits in the instruction ... but
 	// these bits in the instruction are not always interpreted as these
@@ -280,4 +285,8 @@ module instruction_decode #(parameter XLEN=32) (
 		.alloc_ldq_entry(control_signals.alloc_ldq_entry),
 		.alloc_stq_entry(control_signals.alloc_stq_entry)
 	);
+
+	assign control_signals.lui = (opcode == 'b0110111);
+	assign control_signals.auipc = (opcode == 'b0010111);
+	assign control_signals.u_type = (control_signals.lui || control_signals.auipc);
 endmodule

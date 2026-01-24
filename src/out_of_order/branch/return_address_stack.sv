@@ -95,14 +95,24 @@ endmodule
 //
 // TODO: checkpoint and restore_checkpoint perhaps set by this module??
 module ras_control (
+	input logic branch,	// control signal: is the instructin a branch?  need to checkpoint
 	input logic jump,	// control signal: is the instruction a jump?
 	input logic jalr,	// 0 = JAL, 1 = JALR
+	input logic jalr_fold,	// is the JALR being folded with a U_TYPE instruction, making it deterministic?
+
+	// no checkpoint if we misspeculated, but the RAS also guarantees that
+	// exception = actual exception or misprediction
+	input logic exception,
 
 	input logic [4:0] rs1_index,
 	input logic [4:0] rd_index,
 
 	output logic push,
-	output logic pop
+	output logic pop,
+	output logic checkpoint,
+	// restore_checkpoint might not need to be a port here,
+	// flush/exception could just be routed to this on the RAS
+	output logic restore_checkpoint
 );
 	logic rd_index_match;
 	logic rs1_index_match;
@@ -114,4 +124,7 @@ module ras_control (
 	assign pop = jump && jalr && rs1_index_match && (	// only pop on JALR where rs1_index matches
 		!rd_index_match || (rd_index_match && rd_index != rs1_index)
 	);
+
+	assign checkpoint = !exception && (branch || (jump && jalr && !jalr_fold));
+	assign restore_checkpoint = exception;
 endmodule

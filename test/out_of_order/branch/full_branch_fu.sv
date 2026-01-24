@@ -1,5 +1,3 @@
-// TODO list
-// - PC update logic for predictions and executed mispredictions
 module test_full_branch_fu;
 	localparam XLEN = 32;
 	localparam ROB_BUF_SIZE = 64;
@@ -25,6 +23,8 @@ module test_full_branch_fu;
 
 	logic	ras_push;
 	logic	ras_pop;
+	logic	ras_checkpoint;
+	logic	ras_restore_checkpoint;
 
 	logic [XLEN-1:0]	ras_address_out;
 	logic			ras_empty;
@@ -279,13 +279,19 @@ module test_full_branch_fu;
 	);
 
 	ras_control ras_control (
+		.branch(control_signals_in.branch),
 		.jump(control_signals_in.jump),
 		.jalr(control_signals_in.jalr),
+		.jalr_fold(1'b0),	// TODO: folding not implemented yet
+		.exception(flush),
+
 		.rs1_index(control_signals_in.rs1_index),
 		.rd_index(control_signals_in.rd_index),
 
 		.push(ras_push),
-		.pop(ras_pop)
+		.pop(ras_pop),
+		.checkpoint(ras_checkpoint),
+		.restore_checkpoint(ras_restore_checkpoint)
 	);
 
 	return_address_stack #(.XLEN(XLEN), .STACK_SIZE(RAS_SIZE)) ras (
@@ -298,8 +304,8 @@ module test_full_branch_fu;
 
 		// not doing checkpointing in this test yet, as it's already
 		// covered in the unit test
-		.checkpoint(1'b0),
-		.restore_checkpoint(1'b0),
+		.checkpoint(ras_checkpoint),
+		.restore_checkpoint(ras_restore_checkpoint),
 
 		.address_out(ras_address_out),
 
@@ -319,15 +325,8 @@ module test_full_branch_fu;
 
 	branch_target #(.XLEN(XLEN)) branch_target_calculator (
 		.pc(pc),
-		// TODO: for now, I'm assuming that we only use the values on
-		// the RAS to predict values for JALR instructions.  as noted
-		// in cpu.sv, I may cache or forward values from LUI and AUIPC
-		// if the registers match. If I do, I should update this test.
-		// Until then, JALR predictions that don't pop off the stack
-		// will use 0 as the source, which is just as useless as any
-		// other number, but for the purposes of testing the branch
-		// pipeline I'm down with it as it is near guaranteed to
-		// mispredict and I can validate that it flushes.
+		// TODO: update rs1 input here when U_TYPE folding and BTB/IRB
+		// are implemented
 		.rs1(ras_address_out),
 		.immediate(immediate),
 		.jalr(control_signals_in.jalr),
@@ -602,6 +601,8 @@ module test_full_branch_fu;
 		// and verify that it's correctly routed to PC
 		assert(pc_next == ('h1234_5678 + 20));
 
+		assert(ras_restore_checkpoint == 1);
+
 		// since instruction is still the conventional NOP, it's
 		// important that we flush that out of the pipeline
 		# 10
@@ -610,9 +611,8 @@ module test_full_branch_fu;
 		assert(rob_tail == 2);
 
 		assert(pc == ('h1234_5678 + 20));
-		// TODO: I am probably supposed to restore the RAS to its
-		// checkpoint after this misspeculation, so I'll need to
-		// verify that here (or soon)
+		assert(ras_empty == 1);
+		assert(ras_debug_stack_pointer == 0);
 
 		// RAS test
 		// going to push a value onto it using JAL, then pop it off
@@ -640,16 +640,39 @@ module test_full_branch_fu;
 		// the JAL should not be routed to the RS, and the link
 		// register value ('h00800004) should be written to the
 		// reorder buffer when the entry is allocated.
+		assert(rob_valid[rob_head] == 1);
+		assert(rob_commit == 1);
+		assert(rob_commit_value == ('h00800004));
+		assert(rf_write_en == 1);
+		assert(pc_next == ('h00800000 + 'hFFF52570 + 4));	// verify the JAL doesn't get routed to the PC again on commit
 
 		instruction = 'h00008067;	// jalr x0, 0(x1) aka RET
 		# 2
 		assert(ras_push == 0);
 		assert(ras_pop == 1);
-		$display("ras_pop: %d", ras_pop);
 		assert(ras_address_out == 'h00800004);
 		assert(branch_target == 'h00800004);
 		# 8
 		// verify routing
+		assert(busy == 1);
+		assert(ready_to_execute == 1);
+		assert(stall == 1);	// we never changed instruction, so it would be trying to issue it again
+		assert(write_to_buffer == 1);
+		# 10
+		assert(cdb_request == 'b1);
+		assert(cdb_permit == 'b1);
+		assert(cdb_valid == 1);
+		// cdb_data is 0 because no logic in the FU actually handles JAL
+		assert(busy == 1);	// on the next cycle, the RS will see its ROB tag on the CDB and clear itself
+		assert(cdb_mispredicted == 0);	// this should have been correctly predicted using the RAS
+		# 10
+
+		instruction = 0;	// cleared instruction - unconventional NOP, but must do nothing
+		assert(busy == 0);	// verify the RS cleared itself when it saw its ROB tag on the CDB
+		assert(rob_valid[0] == 'b1);
+		assert(rob_commit == 1);
+		assert(rf_write_en == 1);	// doesn't really matter if this is set or clear, rd = x0 and won't be updated in the RF
+		assert(flush == 0);	// nothing should get flushed cause the JALR did not mispredict
 
 		$display("All assertions passed.");
 		$finish();

@@ -286,7 +286,13 @@ module instruction_decode #(parameter XLEN=32) (
 		.alloc_stq_entry(control_signals.alloc_stq_entry)
 	);
 
-	assign control_signals.lui = (opcode == 'b0110111);
-	assign control_signals.auipc = (opcode == 'b0010111);
-	assign control_signals.u_type = (control_signals.lui || control_signals.auipc);
+	logic lui;
+	logic auipc;
+	assign lui = (opcode == 'b0110111);
+	assign auipc = (opcode == 'b0010111);
+
+	assign control_signals.lui = lui;
+	assign control_signals.auipc = auipc;
+
+	assign control_signals.u_type = (lui || auipc);
 endmodule

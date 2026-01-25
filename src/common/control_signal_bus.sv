@@ -39,10 +39,6 @@ typedef struct packed {
 				// 2: pc + 4 for jump instructions
 
 	// alu control signals
-	// TODO: I think this is the same as funct3, which I am now just
-	// passing directly as a part of this bus, so I need to eliminate the
-	// redundancy
-	logic [2:0] alu_operation;
 	logic sign;	// only used in R type instructions
 
 	// branch and jump signals

@@ -4,10 +4,10 @@ module alu #(parameter XLEN=32) (
 	input logic [XLEN-1:0] b,	// either rs2 or immediate, selection will be done outside the ALU
 
 	// control signals
-	input logic [2:0] op,	// funct3 - used to select output
+	input logic [2:0] funct3,
 	input logic sign,	// control signal indicating subtraction or arithmetic shift
-							// inst[30] when opcode indicates R type instruction
-							// seems to be always 0 in I type instructions
+				// inst[30] when opcode indicates R type instruction
+				// seems to be always 0 in I type instructions
 
 	
 	output logic [XLEN-1:0] result,	// output result
@@ -31,7 +31,7 @@ module alu #(parameter XLEN=32) (
 	assign _and = a & b;
 
 	always_comb
-		case (op)
+		case (funct3)
 			3'b000:	result = sum;			// add or sub
 			3'b001: result = a << b[4:0];		// left shift
 			3'b010: result = ($signed(a) < $signed(b)) ? 1 : 0;	// less than signed

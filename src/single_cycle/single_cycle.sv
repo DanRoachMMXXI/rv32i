@@ -19,8 +19,6 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 
 	logic [XLEN-1:0] alu_op1;
 	logic [XLEN-1:0] alu_op2;
-	logic [2:0] alu_operation;
-	logic alu_sign;
 	logic [XLEN-1:0] alu_result;
 	logic alu_zero;
 
@@ -86,7 +84,7 @@ module single_cycle #(parameter XLEN=32, parameter PROGRAM="") (
 	alu #(.XLEN(XLEN)) alu(
 		.a(alu_op1),
 		.b(alu_op2),
-		.op(control_signals.alu_operation),
+		.op(control_signals.funct3),
 		.sign(control_signals.sign),
 		.result(alu_result),
 		.zero(alu_zero));

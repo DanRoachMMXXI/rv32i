@@ -12,28 +12,32 @@
  * So basically, the operation performed on the operands is completely
  * different depending on whether this is a JALR or a branch.
  */
-module branch_functional_unit #(parameter XLEN=32) (
-	input logic [XLEN-1:0]	v1,	// rs1
-	input logic [XLEN-1:0]	v2,	// immediate for JALR, rs2 for B_TYPE
+module branch_functional_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH) (
+	input logic [XLEN-1:0]			v1,	// rs1
+	input logic [XLEN-1:0]			v2,	// immediate for JALR, rs2 for B_TYPE
 
-	input logic [XLEN-1:0]	pc,
-	input logic [XLEN-1:0]	immediate,
-	input logic [XLEN-1:0]	predicted_next_instruction,
+	input logic [XLEN-1:0]			pc,
+	input logic [XLEN-1:0]			immediate,
+	input logic [XLEN-1:0]			predicted_next_instruction,
 
-	input logic [2:0]	funct3,
-	input logic		instruction_length,
-	input logic		jalr,
-	input logic		branch,
+	input logic [ROB_TAG_WIDTH-1:0]		rob_tag_in,
+
+	input logic [2:0]			funct3,
+	input logic				instruction_length,
+	input logic				jalr,
+	input logic				branch,
 	// input logic		branch_prediction,
 
-	output logic [XLEN-1:0]	next_instruction,
-	output logic		redirect_mispredicted,
+	output logic [XLEN-1:0]			next_instruction,
+	output logic				redirect_mispredicted,
+
+	output logic [ROB_TAG_WIDTH-1:0]	rob_tag_out,
 
 	// reservation stations signals
-	input logic		ready_to_execute,
-	output logic		accept,
+	input logic				ready_to_execute,
+	output logic				accept,
 
-	output logic		write_to_buffer
+	output logic				write_to_buffer
 	);
 
 	logic [XLEN-1:0]	next_pc;
@@ -89,6 +93,8 @@ module branch_functional_unit #(parameter XLEN=32) (
 			next_instruction = {XLEN{1'bx}};
 	end
 	assign redirect_mispredicted = next_instruction != predicted_next_instruction;
+
+	assign rob_tag_out = rob_tag_in;
 
 	// since FU is only attached to one RS, we accept when the operands
 	// are ready

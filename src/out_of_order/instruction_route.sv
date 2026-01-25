@@ -118,11 +118,11 @@ module instruction_route #(parameter XLEN=32, parameter N_ALU_RS, parameter N_AG
 		& {N_ALU_RS{valid}};
 	assign branch_rs_route = branch_rs_arbiter_out
 		& {N_BRANCH_RS{rs_type_branch}}
-		& {N_ALU_RS{!flush}}
+		& {N_BRANCH_RS{!flush}}
 		& {N_BRANCH_RS{valid}};
 	assign agu_rs_route = agu_rs_arbiter_out
 		& {N_AGU_RS{rs_type_agu}}
-		& {N_ALU_RS{!flush}}
+		& {N_AGU_RS{!flush}}
 		& {N_AGU_RS{valid}};
 
 	// stall logic

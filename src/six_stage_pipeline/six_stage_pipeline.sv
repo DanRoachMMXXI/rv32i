@@ -279,7 +279,7 @@ module six_stage_pipeline #(parameter XLEN=32, parameter PROGRAM="") (
 	alu #(.XLEN(XLEN)) alu(
 		.a(EX_alu_op1),
 		.b(EX_alu_op2),
-		.op(EX_control_signals.alu_operation),
+		.op(EX_control_signals.funct3),
 		.sign(EX_control_signals.sign),
 		.result(EX_alu_result),
 		.zero(EX_alu_zero));

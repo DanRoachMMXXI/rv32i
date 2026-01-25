@@ -82,7 +82,7 @@ module test_full_fu;
 	alu_functional_unit #(.XLEN(32)) fu (
 		.a(v1_out),
 		.b(v2_out),
-		.op(control_signal_bus_out.alu_operation),
+		.op(control_signal_bus_out.funct3),
 		.sign(control_signal_bus_out.sign),
 		.result(fu_result),
 		.ready_to_execute(ready_to_execute),
@@ -119,7 +119,7 @@ module test_full_fu;
 		enable = 1;
 		q1_in = 10;
 		q2_in = 12;
-		control_signal_bus_in.alu_operation = 0;		// addition
+		control_signal_bus_in.funct3 = 0;		// addition
 		control_signal_bus_in.sign = 0;
 		reorder_buffer_tag_in = 19;
 		# 10

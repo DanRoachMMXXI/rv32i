@@ -229,6 +229,9 @@ return_address_stack ras:
 test_ooo_rf:
 	$(VERILATOR) test/out_of_order/register_file_modifications.sv src/common/register_file.sv
 
+ooo_cpu ooocpu:
+	$(VERILATOR) --top-module cpu src/common/*.sv src/out_of_order/*.sv src/out_of_order/branch/*.sv src/out_of_order/lsu/*.sv
+
 clean:
 	rm -rf work transcript *.log *.wlf
 	rm -rf obj_dir

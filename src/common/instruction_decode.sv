@@ -73,7 +73,7 @@ endmodule
 
 module alu_decode (
 	input logic [31:0] instruction,
-	output logic [2:0] alu_operation,
+	// output logic [2:0] alu_operation,
 	output logic sign,
 	output logic [1:0] op1_src,
 	output logic op2_src
@@ -86,24 +86,28 @@ module alu_decode (
 	assign funct3 = instruction[14:12];
 
 	// ALU operation and sign
+	// TODO: before you delete alu_operation, you have to update
+	// single_cycle and six_stage_pipeline to use the new branch logic in
+	// out_of_order/branch/branch_functional_unit, and handle the below
+	// U_TYPE, S_TYPE, and I_TYPE_LOAD instructions as well
 	always_comb
 		if (opcode == 'b1100011)	// B_TYPE
 			unique case (funct3)
 				'b000, 'b001:	// beq and bne
 				begin
-					alu_operation = 'b000;
+					// alu_operation = 'b000;
 					sign = 1;
 				end
 
 				'b100, 'b101:	// blt and bge
 				begin
-					alu_operation = 'b010;
+					// alu_operation = 'b010;
 					sign = 0;
 				end
 
 				'b110, 'b111:	// bltu and bgeu
 				begin
-					alu_operation = 'b011;
+					// alu_operation = 'b011;
 					sign = 0;
 				end
 			endcase
@@ -117,12 +121,12 @@ module alu_decode (
 				|| opcode == 'b0000011	// I_TYPE_LOAD
 				|| opcode == 'b0100011)	// S_TYPE
 		begin
-			alu_operation = 'b000;
+			// alu_operation = 'b000;
 			sign = 0;
 		end
 		else	// R type and I type, and other instruction types will not read this
 		begin
-			alu_operation = funct3;
+			// alu_operation = funct3;
 			sign = (opcode == 'b0110011) ? instruction[30] : 0;	// R type specific
 		end
 
@@ -237,7 +241,7 @@ module instruction_decode #(parameter XLEN=32) (
 
 	alu_decode alu_decode(
 		.instruction(instruction),
-		.alu_operation(control_signals.alu_operation),
+		// .alu_operation(control_signals.alu_operation),
 		.sign(control_signals.sign),
 		.op1_src(control_signals.alu_op1_src),
 		.op2_src(control_signals.alu_op2_src));

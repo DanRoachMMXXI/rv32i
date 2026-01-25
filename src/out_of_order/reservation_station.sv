@@ -26,6 +26,14 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	// functional units that aren't using them, so for reservation
 	// stations connected to other functional units, just be sure to wire
 	// these inputs to 0 and leave the corresponding outputs disconnected.
+	// TODO: ChatGPT mentioned in a different context storing the PC of
+	// the instruction in the ROB as a dedicated field.  That's kinda what
+	// next_instruction is serving as rn, but branch mispredicts overwrite
+	// it.  I wanna look at storing the PC in the ROB, and possibly
+	// removing it from the reservation stations.
+	// In this implementation, the PC in the reservation station should be
+	// optimized away for all non-branch reservation stations since it
+	// won't be connected to anything
 	input logic [XLEN-1:0]		pc_in,
 	input logic [XLEN-1:0]		immediate_in,
 	input logic [XLEN-1:0]		predicted_next_instruction_in,

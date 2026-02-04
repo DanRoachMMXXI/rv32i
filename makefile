@@ -181,7 +181,7 @@ reorder_buffer rob:
 	$(VERILATOR) --top-module test_reorder_buffer test/out_of_order/reorder_buffer.sv test/out_of_order/instruction_type.sv src/out_of_order/reorder_buffer.sv src/common/lsb_priority_encoder.sv
 
 fubuf:
-	$(VERILATOR) src/out_of_order/functional_unit_output_buffer.sv test/out_of_order/functional_unit_output_buffer.sv
+	$(VERILATOR) --top-module test_functional_unit_output_buffer src/out_of_order/functional_unit_output_buffer.sv test/out_of_order/functional_unit_output_buffer.sv src/common/fixed_priority_arbiter.sv src/common/lsb_priority_encoder.sv
 
 rs:
 	$(VERILATOR) --top-module test_reservation_station src/common/control_signal_bus.sv test/out_of_order/reservation_station.sv src/out_of_order/reservation_station.sv

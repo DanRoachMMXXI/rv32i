@@ -38,12 +38,28 @@
  * will update and consumers of the new instruction at that ROB entry will
  * consume the old misspeculated value.
  * I think that settles it, flush the output buffer.
+ *
+ * TODO: take validation one stage at a time
+ * first validate instruction decode
+ * then validate instruction decode => RF/Route
+ * then validate decode => route => reservation station
+ *
+ * TODO: I think stalls should be implemented as disabling the "enable" inputs
+ * of synchronous elements in the front-end.  This way, it guarantees nothing
+ * is updated (including RAS, BTB, etc) when an instruction is stalled and
+ * thus not yet committing its state change to the next stage in the pipeline.
+ * I think I prefer this instead of effectively "re-routing" the stalled
+ * instruction back into that synchronous element (i.e. the pc).
+ * An important part of this todo is analyzing all the possible sources that
+ * an instruction stall can from.  Is it JUST from the instruction routing?
+ * Or can other things stall the front-end?
  */
 module cpu #(
 	parameter XLEN=32,
 	parameter ROB_SIZE=32,
 	parameter LDQ_SIZE=8,
 	parameter STQ_SIZE=8,
+	parameter RAS_SIZE=8,
 	parameter N_ALU_RS=3,
 	parameter N_AGU_RS=2,
 	parameter N_BRANCH_RS=1) (
@@ -77,12 +93,28 @@ module cpu #(
 	logic [XLEN-1:0]	pc;
 	logic [XLEN-1:0]	pc_next;
 
-	// Instruction Decode stage
+	// Instruction Decode - instruction decode
+	logic [XLEN-1:0]	ID_pc;
 	logic [XLEN-1:0]	ID_instruction;
 	logic [XLEN-1:0]	ID_immediate;
 	control_signal_bus	ID_control_signals;
 
-	// Register File / Instruction Route stage
+	// Instruction Decode - RAS control signals
+	logic			ras_push;
+	logic			ras_pop;
+	logic			ras_checkpoint;
+	logic			ras_restore_checkpoint;
+
+	// Instruction Decode - RAS
+	logic [XLEN-1:0]	ras_address_out;
+	logic			ras_empty;
+	logic			ras_full;
+
+	// Instruction Decode - branch prediction
+	logic [XLEN-1:0]	ID_branch_target;
+	logic			ID_branch_prediction;	// 1 if taken, 0 if not taken
+
+	// RF/Route - instruction decode signals
 	logic [XLEN-1:0]	IR_pc;
 	logic [XLEN-1:0]	IR_immediate;
 	control_signal_bus	IR_control_signals;
@@ -118,13 +150,7 @@ module cpu #(
 	logic [TOTAL_RS-1:0]	RS_dispatched;
 
 	// reservation station outputs
-	// TODO: do I even need to output q1 and q2 from the reservation
-	// station?
-	logic [TOTAL_RS-1:0]			RS_q1_valid;
-	logic [TOTAL_RS-1:0][ROB_TAG_WIDTH-1:0]	RS_q1;
 	logic [TOTAL_RS-1:0][XLEN-1:0]		RS_v1;
-	logic [TOTAL_RS-1:0]			RS_q2_valid;
-	logic [TOTAL_RS-1:0][ROB_TAG_WIDTH-1:0]	RS_q2;
 	logic [TOTAL_RS-1:0][XLEN-1:0]		RS_v2;
 	logic [TOTAL_RS-1:0][ROB_TAG_WIDTH-1:0]	RS_rob_tag;
 	logic [TOTAL_RS-1:0]			RS_busy;
@@ -169,7 +195,7 @@ module cpu #(
 
 	// ROB
 	logic [ROB_SIZE-1:0]		rob_valid;
-	logic [ROB_SIZE-1:0][1:0]		rob_instruction_type;
+	logic [ROB_SIZE-1:0][1:0]	rob_instruction_type;
 	logic [ROB_SIZE-1:0]		rob_address_valid;
 	logic [ROB_SIZE-1:0][XLEN-1:0]	rob_destination;
 	logic [ROB_SIZE-1:0][XLEN-1:0]	rob_value;
@@ -179,25 +205,25 @@ module cpu #(
 	logic [ROB_SIZE-1:0][XLEN-1:0]	rob_next_instruction;
 
 	// the instruction committing
-	logic					rob_commit_valid;
-	logic [1:0]				rob_commit_instruction_type;
-	logic					rob_commit_address_valid;
-	logic [XLEN-1:0]			rob_commit_destination;
-	logic [XLEN-1:0]			rob_commit_value;
-	logic					rob_commit_data_ready;
-	logic					rob_commit_branch_mispredict;
-	logic					rob_commit_exception;
-	logic [XLEN-1:0]			rob_commit_next_instruction;
+	logic				rob_commit_valid;
+	logic [1:0]			rob_commit_instruction_type;
+	logic				rob_commit_address_valid;
+	logic [XLEN-1:0]		rob_commit_destination;
+	logic [XLEN-1:0]		rob_commit_value;
+	logic				rob_commit_data_ready;
+	logic				rob_commit_branch_mispredict;
+	logic				rob_commit_exception;
+	logic [XLEN-1:0]		rob_commit_next_instruction;
 
-	logic [ROB_TAG_WIDTH-1:0]		rob_head;
-	logic [ROB_TAG_WIDTH-1:0]		rob_tail;
-	logic					rob_commit;
-	logic					rob_full;
+	logic [ROB_TAG_WIDTH-1:0]	rob_head;
+	logic [ROB_TAG_WIDTH-1:0]	rob_tail;
+	logic				rob_commit;
+	logic				rob_full;
 
 	// exception handling
 	logic				exception;
 	logic [XLEN-1:0]		exception_next_instruction;
-	logic [ROB_SIZE-1:0]	rob_flush;
+	logic [ROB_SIZE-1:0]		rob_flush;
 
 	// LDQ
 	logic ldq_full;
@@ -212,16 +238,29 @@ module cpu #(
 	logic [XLEN-1:0]	MEM_memory_address;
 	logic [XLEN-1:0]	MEM_memory_data;
 
+	always_ff @(posedge clk) begin: pc_reg
+		if (!reset)
+			pc <= 0;
+		else if (!IR_stall)
+			pc <= pc_next;
+	end
+
 	pc_mux #(.XLEN(XLEN)) pc_mux (
 		.pc(pc),
-		.predicted_next_instruction(),
-		.exception_next_instruction(),
+		.predicted_next_instruction(ID_branch_target),
+		.exception_next_instruction(exception_next_instruction),
 
-		// TODO: name this port with the pipeline stage
-		.instruction_length(),
+		// TODO: figure out how instruction_fetch knows the
+		// instruction length before it reaches decode stage
+		// if we just use the signal in decode stage, we miss every
+		// other cycle waiting for the instruction to decode to know
+		// the length of the instruction.
+		// For now, since I'm not supporting compressed instructions,
+		// I'll hardwire this to 1 (aka instruction length of 4 bytes)
+		.instruction_length(1'b1),
 
-		.prediction(),
-		.exception(),
+		.prediction(ID_branch_prediction),
+		.exception(exception),
 
 		.pc_next(pc_next)
 	);
@@ -230,6 +269,62 @@ module cpu #(
 		.instruction(ID_instruction),
 		.immediate(ID_immediate),
 		.control_signals(ID_control_signals)
+	);
+
+	// branch prediction
+	ras_control ras_control (
+		.branch(ID_control_signals.branch),
+		.jump(ID_control_signals.jump),
+		.jalr(ID_control_signals.jalr),
+		.jalr_fold(1'b0),	// TODO: change this when folding is implemented
+
+		.exception(exception),
+
+		.rs1_index(ID_control_signals.rs1_index),
+		.rd_index(ID_control_signals.rd_index),
+
+		.push(ras_push),
+		.pop(ras_pop),
+		.checkpoint(ras_checkpoint),
+		.restore_checkpoint(ras_restore_checkpoint)
+	);
+	return_address_stack #(.XLEN(XLEN), .STACK_SIZE(RAS_SIZE)) ras (
+		.clk(clk),
+		.reset(reset),
+
+		.address_in(),
+		.push(ras_push),
+		.pop(ras_pop),
+
+		.checkpoint(ras_checkpoint),
+		.restore_checkpoint(ras_restore_checkpoint),
+
+		.address_out(ras_address_out),
+		.empty(ras_empty),
+		.full(ras_full),
+
+		// debug/unit test signals, leave disconnected here
+		.stack(),
+		.stack_pointer(),
+		.sp_checkpoint(),
+		.n_entries(),
+		.n_entries_cp()
+	);
+
+	branch_target #(.XLEN(XLEN)) branch_target_calculator (
+		.pc(ID_pc),
+		.rs1(ras_address_out),	// TODO: update this when BTB is implemented
+		.immediate(ID_immediate),
+		.jalr(ID_control_signals.jalr),
+		.branch_target(ID_branch_target)
+	);
+
+	branch_predictor #(.XLEN(XLEN)) branch_predictor (
+		.pc(ID_pc),
+		.branch_target(ID_branch_target),
+		.jump(ID_control_signals.jump),
+		.branch(ID_control_signals.branch),
+		.branch_predicted_taken(ID_branch_prediction)
 	);
 
 	instruction_route #(.XLEN(XLEN), .N_ALU_RS(N_ALU_RS), .N_AGU_RS(N_AGU_RS), .N_BRANCH_RS(N_BRANCH_RS)) instruction_route (
@@ -244,7 +339,7 @@ module cpu #(
 		.rob_full(rob_full),
 		.ldq_full(ldq_full),
 		.stq_full(stq_full),
-		.flush(),
+		.flush(exception),
 		.alu_rs_busy(RS_busy[ALU_RS_END_INDEX:ALU_RS_START_INDEX]),
 		.agu_rs_busy(RS_busy[AGU_RS_END_INDEX:AGU_RS_START_INDEX]),
 		.branch_rs_busy(RS_busy[BRANCH_RS_END_INDEX:BRANCH_RS_START_INDEX]),
@@ -307,6 +402,12 @@ module cpu #(
 	// something else gets access over it, it's also valid.  There's never
 	// a case where an FU output buffer has a value and the CDB is not
 	// valid.
+	// update on ^: while it's true that it worsens the delay for
+	// cdb_valid, the arbiter still has to receive input from the
+	// non-empty buffers and permit one to broadcast to the CDB, so the
+	// propagation delay is unavoidable in that context.  So this is
+	// a fine optimization to make to remove a very small amount of
+	// hardware, but it's likely not impacting performance.
 	cdb_arbiter #(.N(TOTAL_RS)) cdb_arbiter (
 		.request(FU_buf_not_empty),
 		.grant(cdb_permit),
@@ -320,11 +421,6 @@ module cpu #(
 	);
 
 	// Generate the ALU execution pipeline N_ALU_RS times
-	// TODO: use the RS index localparams as the range for the genvar,
-	// this will make it easier to assign the values of the shared RS
-	// busses, as well as easier to modify the arrangement of those busses
-	// in the future
-	// only jankery might be the AGU-specific bus signals
 	genvar alu_genvar;
 	generate
 		for (alu_genvar = ALU_RS_START_INDEX; alu_genvar <= ALU_RS_END_INDEX; alu_genvar = alu_genvar + 1) begin
@@ -352,11 +448,11 @@ module cpu #(
 				.cdb_valid(cdb_valid),
 				.cdb_rob_tag(cdb_rob_tag),
 				.cdb_data(cdb_data),
-				.q1_valid_out(RS_q1_valid[alu_genvar]),
-				.q1_out(RS_q1[alu_genvar]),
+				.q1_valid_out(),
+				.q1_out(),
 				.v1_out(RS_v1[alu_genvar]),
-				.q2_valid_out(RS_q2_valid[alu_genvar]),
-				.q2_out(RS_q2[alu_genvar]),
+				.q2_valid_out(),
+				.q2_out(),
 				.v2_out(RS_v2[alu_genvar]),
 				.control_signals_out(RS_control_signals[alu_genvar]),
 				.rob_tag_out(RS_rob_tag[alu_genvar]),
@@ -393,7 +489,7 @@ module cpu #(
 				.write_to_buffer(FU_write_to_buffer[alu_genvar])
 			);
 
-			functional_unit_output_buffer #(.XLEN(XLEN), .TAG_WIDTH($clog2(ROB_SIZE))) alu_output_buf (
+			functional_unit_output_buffer #(.XLEN(XLEN), .ROB_SIZE(ROB_SIZE), .ROB_TAG_WIDTH($clog2(ROB_SIZE))) alu_output_buf (
 				.clk(clk),
 				.reset(reset),
 				.value(FU_result[alu_genvar]),
@@ -401,14 +497,16 @@ module cpu #(
 				.exception(),
 				.redirect_mispredicted(1'b0),
 				.write_en(FU_write_to_buffer[alu_genvar]),
-				.not_empty(FU_buf_not_empty[alu_genvar]),
 				.data_bus_permit(cdb_permit[alu_genvar]),
 				.data_bus_data(cdb_data),
 				.data_bus_tag(cdb_rob_tag),
+				// no need to connect this output buffer to
+				// the exception or misprediction lines of the
+				// CDB if it can't generate either signal
 				.data_bus_exception(),
 				.data_bus_redirect_mispredicted(),
-				.read_from(),
-				.write_to()
+				.not_empty(FU_buf_not_empty[alu_genvar]),
+				.full()
 			);
 		end
 	endgenerate
@@ -440,11 +538,11 @@ module cpu #(
 				.cdb_valid(address_bus_valid),
 				.cdb_rob_tag(address_bus_tag),
 				.cdb_data(address_bus_data),
-				.q1_valid_out(RS_q1_valid[agu_genvar]),
-				.q1_out(RS_q1[agu_genvar]),
+				.q1_valid_out(),
+				.q1_out(),
 				.v1_out(RS_v1[agu_genvar]),
-				.q2_valid_out(RS_q2_valid[agu_genvar]),
-				.q2_out(RS_q2[agu_genvar]),
+				.q2_valid_out(),
+				.q2_out(),
 				.v2_out(RS_v2[agu_genvar]),
 				.control_signals_out(RS_control_signals[agu_genvar]),
 				.rob_tag_out(RS_rob_tag[agu_genvar]),
@@ -479,7 +577,7 @@ module cpu #(
 				.write_to_buffer(FU_write_to_buffer[agu_genvar])
 			);
 
-			functional_unit_output_buffer #(.XLEN(XLEN), .TAG_WIDTH($clog2(ROB_SIZE))) agu_output_buf (
+			functional_unit_output_buffer #(.XLEN(XLEN), .ROB_SIZE(ROB_SIZE), .ROB_TAG_WIDTH($clog2(ROB_SIZE))) agu_output_buf (
 				.clk(clk),
 				.reset(reset),
 				.value(FU_result[agu_genvar]),
@@ -488,14 +586,15 @@ module cpu #(
 				.exception(1'b0),
 				.redirect_mispredicted(1'b0),
 				.write_en(FU_write_to_buffer[agu_genvar]),
-				.not_empty(AGU_FU_buf_not_empty[agu_genvar]),
 				.data_bus_permit(address_bus_permit[agu_genvar]),
 				.data_bus_data(address_bus_data),
 				.data_bus_tag(address_bus_tag),
+				// the address bus doesn't have exception or
+				// misprediction signals
 				.data_bus_exception(),
 				.data_bus_redirect_mispredicted(),
-				.read_from(),
-				.write_to()
+				.not_empty(AGU_FU_buf_not_empty[agu_genvar]),
+				.full()
 			);
 		end
 	endgenerate
@@ -525,11 +624,11 @@ module cpu #(
 				.cdb_valid(cdb_valid),
 				.cdb_rob_tag(cdb_rob_tag),
 				.cdb_data(cdb_data),
-				.q1_valid_out(RS_q1_valid[branch_genvar]),
-				.q1_out(RS_q1[branch_genvar]),
+				.q1_valid_out(),
+				.q1_out(),
 				.v1_out(RS_v1[branch_genvar]),
-				.q2_valid_out(RS_q2_valid[branch_genvar]),
-				.q2_out(RS_q2[branch_genvar]),
+				.q2_valid_out(),
+				.q2_out(),
 				.v2_out(RS_v2[branch_genvar]),
 				.control_signals_out(RS_control_signals[branch_genvar]),
 				.rob_tag_out(RS_rob_tag[branch_genvar]),
@@ -573,7 +672,7 @@ module cpu #(
 				.write_to_buffer(FU_write_to_buffer[branch_genvar])
 			);
 
-			functional_unit_output_buffer #(.XLEN(XLEN), .TAG_WIDTH($clog2(ROB_SIZE))) branch_output_buf (
+			functional_unit_output_buffer #(.XLEN(XLEN), .ROB_SIZE(ROB_SIZE), .ROB_TAG_WIDTH($clog2(ROB_SIZE))) branch_output_buf (
 				.clk(clk),
 				.reset(reset),
 				.value(FU_result[branch_genvar]),
@@ -581,14 +680,13 @@ module cpu #(
 				.exception(FU_exception[branch_genvar]),
 				.redirect_mispredicted(FU_mispredicted[branch_genvar]),
 				.write_en(FU_write_to_buffer[branch_genvar]),
-				.not_empty(FU_buf_not_empty[branch_genvar]),
 				.data_bus_permit(cdb_permit[branch_genvar]),
 				.data_bus_data(cdb_data),
 				.data_bus_tag(cdb_rob_tag),
 				.data_bus_exception(cdb_exception),
 				.data_bus_redirect_mispredicted(cdb_mispredicted),
-				.read_from(),
-				.write_to()
+				.not_empty(FU_buf_not_empty[branch_genvar]),
+				.full()
 			);
 		end
 	endgenerate
@@ -597,8 +695,11 @@ module cpu #(
 		.clk(clk),
 		.reset(reset),
 		.input_en(IR_alloc_rob_entry),
-		.instruction_type_in(),
-		.destination_in(),
+		.instruction_type_in(IR_control_signals.instruction_type),
+		// just store rd_index at allocation.  the only instructions
+		// that don't write to RD are stores, which update the
+		// destination when an address appears on the address bus
+		.destination_in({27'b0, IR_control_signals.rd_index}),
 		.value_in(rob_value_in),
 		.data_ready_in(rob_data_ready_in),
 		.pc_in(IR_pc),
@@ -661,9 +762,6 @@ module cpu #(
 		.stq_new_tail()
 	);
 
-	// TODO buffer_flusher once it's finalized, it's just got too many
-	// TODOs to warrant writing it out now.
-
 	load_store_unit #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) lsu (
 		.clk(clk),
 		.reset(reset),
@@ -691,6 +789,7 @@ module cpu #(
 		.cdb_active(cdb_valid),
 		.cdb_data(cdb_data),
 		.cdb_tag(cdb_rob_tag),
+
 		.kill_mem_req(MEM_kill_mem_req),
 		.fire_memory_op(MEM_fire_memory_op),
 		.memory_op_type(MEM_memory_op_type),

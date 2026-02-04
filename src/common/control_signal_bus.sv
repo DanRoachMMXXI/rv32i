@@ -10,6 +10,8 @@
 typedef struct packed {
 	// carry forward the opcode and funct3 in cases where specific
 	// instructions need to be checked
+	// TODO: eliminate references to opcode, and do the appropriate
+	// decoding in the Instruction Decode stage
 	logic [6:0] opcode;
 	logic [2:0] funct3;
 

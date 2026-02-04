@@ -1,7 +1,7 @@
 module branch_predictor #(parameter XLEN=32) (
-	input logic [XLEN-1:0] pc,	// currently used to determine whether jump is forward or backward
+	input logic [XLEN-1:0]	pc,	// currently used to determine whether jump is forward or backward
 						// will be used to reference branch history
-	input logic [XLEN-1:0] branch_target,
+	input logic [XLEN-1:0]	branch_target,
 
 	/*
 	 * TODO: figure out how the complex branch prediction algorithms work.
@@ -13,10 +13,10 @@ module branch_predictor #(parameter XLEN=32) (
 	 * this module, but idk, that's why it's a TODO
 	 */
 
-	input logic jump,
-	input logic branch,
+	input logic		jump,
+	input logic 		branch,
 
-	output logic branch_predicted_taken
+	output logic		branch_predicted_taken
 	);
 
 	always_comb begin

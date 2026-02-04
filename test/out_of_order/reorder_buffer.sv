@@ -2,48 +2,54 @@ import instruction_type::*;	// consts for convenience
 
 module test_reorder_buffer;
 	localparam XLEN = 32;
-	localparam ROB_TAG_WIDTH = 4;
 	localparam ROB_BUF_SIZE = 16;
+	localparam ROB_TAG_WIDTH = $clog2(ROB_BUF_SIZE);
 	localparam LDQ_SIZE = 16;
 	localparam STQ_SIZE = 16;
 
 	logic clk;
 	logic reset;
 
-	logic input_en;
-	logic [1:0] instruction_type_in;
-	logic [XLEN-1:0] destination_in;
-	logic [XLEN-1:0] value_in;
-	logic data_ready_in;
-	logic [XLEN-1:0] pc_in;
-	logic				cdb_valid;
-	logic [XLEN-1:0]		cdb_data;
-	logic [ROB_TAG_WIDTH-1:0]	cdb_rob_tag;
-	logic				cdb_exception;
-	logic				branch_mispredict;
-	logic agu_address_valid;
-	logic [XLEN-1:0] agu_address_data; logic [XLEN-1:0] agu_address_rob_tag;
-	logic [ROB_BUF_SIZE-1:0]		flush;
-	logic [ROB_TAG_WIDTH-1:0]		rob_new_tail;
+	logic					input_en;
+	logic [1:0]				instruction_type_in;
+	logic [4:0]				destination_in;
+	logic [XLEN-1:0]			value_in;
+	logic					data_ready_in;
+	logic [XLEN-1:0]			pc_in;
+
+	logic					cdb_valid;
+	logic [XLEN-1:0]			cdb_data;
+	logic [ROB_TAG_WIDTH:0]			cdb_rob_tag;
+	logic					cdb_exception;
+	logic					branch_mispredict;
+
+	logic					agu_address_valid;
+	logic [XLEN-1:0]			agu_address_data;
+	logic [ROB_TAG_WIDTH:0]			agu_address_rob_tag;
+
+	logic					flush;
+	logic [ROB_BUF_SIZE-1:0]		rob_flush;
+	logic [ROB_TAG_WIDTH:0]			rob_new_tail;
+
 	logic [ROB_BUF_SIZE-1:0]		rob_valid;
 	logic [ROB_BUF_SIZE-1:0][1:0]		rob_instruction_type;
 	logic [ROB_BUF_SIZE-1:0]		rob_address_valid;
-	logic [ROB_BUF_SIZE-1:0][XLEN-1:0]	rob_destination;
+	logic [ROB_BUF_SIZE-1:0][4:0]		rob_destination;
 	logic [ROB_BUF_SIZE-1:0][XLEN-1:0]	rob_value;
 	logic [ROB_BUF_SIZE-1:0]		rob_data_ready;
 	logic [ROB_BUF_SIZE-1:0]		rob_branch_mispredict;
 	logic [ROB_BUF_SIZE-1:0]		rob_exception;
 	logic [ROB_BUF_SIZE-1:0][XLEN-1:0]	rob_next_instruction;
-	logic [ROB_TAG_WIDTH-1:0] head;
-	logic [ROB_TAG_WIDTH-1:0] tail;
-	logic commit;
-	logic full;
+	logic [ROB_TAG_WIDTH:0]			head;
+	logic [ROB_TAG_WIDTH:0]			tail;
+	logic					commit;
+	logic					full;
 
-	logic tb_drive_cdb;	// the testbench drives the CDB, as though it were given access to do so by the CDB arbiter
-	logic [XLEN-1:0] tb_cdb_data;
-	logic [ROB_TAG_WIDTH-1:0] tb_cdb_rob_tag;
-	logic tb_cdb_exception;
-	logic tb_branch_mispredict;
+	logic					tb_drive_cdb;	// the testbench drives the CDB, as though it were given access to do so by the CDB arbiter
+	logic [XLEN-1:0]			tb_cdb_data;
+	logic [ROB_TAG_WIDTH:0]			tb_cdb_rob_tag;
+	logic					tb_cdb_exception;
+	logic					tb_branch_mispredict;
 
 	always_comb
 		if (tb_drive_cdb) begin
@@ -53,7 +59,7 @@ module test_reorder_buffer;
 			branch_mispredict = tb_branch_mispredict;
 		end else begin
 			cdb_data = 'bZ;
-			cdb_rob_tag = 4'bZ;
+			cdb_rob_tag = 5'bZ;
 			cdb_exception = 1'bZ;
 			branch_mispredict = 1'bZ;
 		end
@@ -76,7 +82,7 @@ module test_reorder_buffer;
 		.agu_address_valid(agu_address_valid),
 		.agu_address_data(agu_address_data),
 		.agu_address_rob_tag(agu_address_rob_tag),
-		.flush(flush),
+		.flush(rob_flush),
 		.new_tail(rob_new_tail),
 		.rob_valid(rob_valid),
 		.rob_instruction_type(rob_instruction_type),
@@ -87,6 +93,16 @@ module test_reorder_buffer;
 		.rob_branch_mispredict(rob_branch_mispredict),
 		.rob_exception(rob_exception),
 		.rob_next_instruction(rob_next_instruction),
+		// TODO: test commit signals
+		.rob_commit_valid(),
+		.rob_commit_instruction_type(),
+		.rob_commit_address_valid(),
+		.rob_commit_destination(),
+		.rob_commit_value(),
+		.rob_commit_data_ready(),
+		.rob_commit_branch_mispredict(),
+		.rob_commit_exception(),
+		.rob_commit_next_instruction(),
 		.head(head),
 		.tail(tail),
 		.commit(commit),
@@ -96,15 +112,19 @@ module test_reorder_buffer;
 	buffer_flusher #(.BUF_SIZE(ROB_BUF_SIZE), .TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) buffer_flusher (
 		.rob_branch_mispredict(rob_branch_mispredict),
 		.rob_exception(rob_exception),
-		.rob_head(head),
-		.rob_tail(tail),
+		// TODO: VERY BIG TEMPORARY BANDAGE FIX HERE.
+		.rob_head(head[ROB_TAG_WIDTH-1:0]),
+		.rob_tail(tail[ROB_TAG_WIDTH-1:0]),
+		.rob_next_instruction(rob_next_instruction),
 		.ldq_valid(),
 		.ldq_rob_tag(),
 		.stq_valid(),
 		.stq_rob_tag(),
 
 		.flush(flush),
-		.rob_new_tail(rob_new_tail),
+		.exception_next_instruction(),
+		.rob_flush(rob_flush),
+		.rob_new_tail(rob_new_tail[ROB_TAG_WIDTH-1:0]),
 		.flush_ldq(),
 		.ldq_new_tail(),
 		.flush_stq(),
@@ -277,7 +297,8 @@ module test_reorder_buffer;
 		drive_cdb(0, 6, 1);
 		# 10
 		release_cdb();
-		assert(flush == 'h03C0);	// the flush signal should include the excepting instruction since it will need to be retried
+		assert(flush == 1);
+		assert(rob_flush == 'h03C0);	// the flush signal should include the excepting instruction since it will need to be retried
 		# 10
 		assert(rob_valid == 'h0030);
 
@@ -285,7 +306,7 @@ module test_reorder_buffer;
 		$finish();
 	end
 
-	function void drive_cdb(logic [XLEN-1:0] data, logic [ROB_TAG_WIDTH-1:0] tag, logic exception);
+	function void drive_cdb(logic [XLEN-1:0] data, logic [ROB_TAG_WIDTH:0] tag, logic exception);
 		cdb_valid = 1;
 		tb_drive_cdb = 1;
 		tb_cdb_data = data;

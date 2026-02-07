@@ -1,5 +1,11 @@
 // TODO: improve design to check order failures when stores COMMIT and not when they FIRE.
-module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ_SIZE=32, parameter STQ_SIZE=32) (
+module load_store_unit #(
+	parameter XLEN=32, 
+	parameter ROB_TAG_WIDTH, 
+	parameter LDQ_SIZE, 
+	parameter LDQ_TAG_WIDTH, 
+	parameter STQ_SIZE,
+	parameter STQ_TAG_WIDTH) (
 	input logic clk,
 	input logic reset,
 
@@ -27,6 +33,11 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	input logic [ROB_TAG_WIDTH-1:0]	rob_commit_tag,	// ROB tag of entry to commit
 	// not taking the data from the ROB for stores cause I am
 	// assuming the data is already in the store queue
+
+	input logic			flush,
+	input logic [ROB_TAG_WIDTH-1:0]	flush_rob_tag,
+	input logic [LDQ_TAG_WIDTH-1:0]	ldq_new_tail,
+	input logic [STQ_TAG_WIDTH-1:0] stq_new_tail,
 
 	// these signals are what I AM ASSUMING come from memory to indicate
 	// a load succeeded.  something needs to tell the load queue that
@@ -57,23 +68,23 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	output logic [LDQ_SIZE-1:0]				ldq_order_fail,
 	output logic [LDQ_SIZE-1:0][STQ_SIZE-1:0]		ldq_store_mask,
 	output logic [LDQ_SIZE-1:0]				ldq_forwarded,
-	output logic [LDQ_SIZE-1:0][$clog2(STQ_SIZE)-1:0]	ldq_forward_stq_index,
+	output logic [LDQ_SIZE-1:0][STQ_TAG_WIDTH-1:0]		ldq_forward_stq_tag,
 	output logic [LDQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]		ldq_rob_tag,
 
-	output logic [LDQ_SIZE-1:0]				ldq_rotated_valid,
-	output logic [LDQ_SIZE-1:0]				ldq_rotated_address_valid,
-	output logic [LDQ_SIZE-1:0]				ldq_rotated_sleeping,
-	output logic [LDQ_SIZE-1:0]				ldq_rotated_executed,
+	output logic [LDQ_SIZE-1:0]			ldq_rotated_valid,
+	output logic [LDQ_SIZE-1:0]			ldq_rotated_address_valid,
+	output logic [LDQ_SIZE-1:0]			ldq_rotated_sleeping,
+	output logic [LDQ_SIZE-1:0]			ldq_rotated_executed,
 
-	output logic [STQ_SIZE-1:0] stq_valid,		// is the ENTRY valid
-	output logic [STQ_SIZE-1:0] [XLEN-1:0] stq_address,
-	output logic [STQ_SIZE-1:0] stq_address_valid,
-	output logic [STQ_SIZE-1:0] [XLEN-1:0] stq_data,
-	output logic [STQ_SIZE-1:0] stq_data_valid,	// is the data for the store present in the entry?
-	output logic [STQ_SIZE-1:0] stq_committed,
-	output logic [STQ_SIZE-1:0] stq_executed,
-	output logic [STQ_SIZE-1:0] stq_succeeded,
-	output logic [STQ_SIZE-1:0] [ROB_TAG_WIDTH-1:0] stq_rob_tag,
+	output logic [STQ_SIZE-1:0]			stq_valid,		// is the ENTRY valid
+	output logic [STQ_SIZE-1:0][XLEN-1:0]		stq_address,
+	output logic [STQ_SIZE-1:0]			stq_address_valid,
+	output logic [STQ_SIZE-1:0][XLEN-1:0]		stq_data,
+	output logic [STQ_SIZE-1:0]			stq_data_valid,	// is the data for the store present in the entry?
+	output logic [STQ_SIZE-1:0]			stq_committed,
+	output logic [STQ_SIZE-1:0]			stq_executed,
+	output logic [STQ_SIZE-1:0]			stq_succeeded,
+	output logic [STQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]	stq_rob_tag,
 
 	output logic [STQ_SIZE-1:0] stq_rotated_valid,
 	output logic [STQ_SIZE-1:0] stq_rotated_address_valid,
@@ -82,18 +93,24 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	output logic [STQ_SIZE-1:0] stq_rotated_executed,
 	output logic [STQ_SIZE-1:0] stq_rotated_succeeded,
 
-	output logic [$clog2(LDQ_SIZE)-1:0] ldq_head,
-	output logic [$clog2(STQ_SIZE)-1:0] stq_head,
-
 	output logic				load_fired,
-	output logic [$clog2(LDQ_SIZE)-1:0]	load_fired_ldq_index,
+	output logic [LDQ_TAG_WIDTH-1:0]	load_fired_ldq_tag,
 	output logic				load_fired_sleep,
 	output logic [ROB_TAG_WIDTH-1:0]	load_fired_sleep_rob_tag,
 	output logic				forward,
-	output logic [$clog2(STQ_SIZE)-1:0]	stq_forward_index,
+	output logic [STQ_TAG_WIDTH-1:0]	stq_forward_tag,
 
 	output logic [LDQ_SIZE-1:0]		order_failures,
+
+	output logic [LDQ_TAG_WIDTH-1:0]	ldq_head,
+	output logic [STQ_TAG_WIDTH-1:0]	stq_head,
 `endif
+
+	// the ROB will consume these and store them for every instruction, so
+	// that they can be restored directly when an instruction causes
+	// a flush
+	output logic [LDQ_TAG_WIDTH-1:0]	ldq_tail,
+	output logic [STQ_TAG_WIDTH-1:0]	stq_tail,
 
 	// I don't think an address needs to be associated with this, it's
 	// just whatever memory request is being put out to the L1 cache this
@@ -112,6 +129,9 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	output logic [XLEN-1:0]		memory_data
 	);
 
+	localparam LDQ_INDEX_WIDTH = $clog2(LDQ_SIZE);
+	localparam STQ_INDEX_WIDTH = $clog2(STQ_SIZE);
+
 `ifndef DEBUG
 	// load queue buffer signals
 	logic [LDQ_SIZE-1:0]				ldq_valid;
@@ -125,7 +145,7 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	logic [LDQ_SIZE-1:0]				ldq_order_fail;
 	logic [LDQ_SIZE-1:0][STQ_SIZE-1:0]		ldq_store_mask;
 	logic [LDQ_SIZE-1:0]				ldq_forwarded;
-	logic [LDQ_SIZE-1:0][$clog2(STQ_SIZE)-1:0]	ldq_forward_stq_index;
+	logic [LDQ_SIZE-1:0][$clog2(STQ_SIZE)-1:0]	ldq_forward_stq_tag;
 	logic [LDQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]		ldq_rob_tag;
 
 	logic [LDQ_SIZE-1:0]				ldq_rotated_valid;
@@ -151,8 +171,8 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	logic [STQ_SIZE-1:0] stq_rotated_executed;
 	logic [STQ_SIZE-1:0] stq_rotated_succeeded;
 
-	logic [$clog2(LDQ_SIZE)-1:0] ldq_head;
-	logic [$clog2(STQ_SIZE)-1:0] stq_head;
+	logic [LDQ_TAG_WIDTH-1:0] ldq_head;
+	logic [STQ_TAG_WIDTH-1:0] stq_head;
 
 	// load_fired - is a load being fired this clock cycle?
 	// produced by: lsu_control
@@ -161,7 +181,7 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	// load_fired_ldq_index - LDQ index of the load being fired this cycle
 	// produced by: lsu_control
 	// consumed by: load_queue, load_store_dep_checker
-	logic [$clog2(LDQ_SIZE)-1:0] load_fired_ldq_index;
+	logic [LDQ_TAG_WIDTH-1:0] load_fired_ldq_tag;
 
 	// load_fired_sleep - is the currently fired load being put to sleep?
 	// load_fired_sleep_rob_tag - the ROB tag for the store that put this
@@ -177,7 +197,7 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	// produced by: load_store_dep_checker
 	// consumed by: load_queue
 	logic				forward;
-	logic [$clog2(STQ_SIZE)-1:0]	stq_forward_index;
+	logic [STQ_TAG_WIDTH-1:0]	stq_forward_tag;
 
 	// order_failures - bitmask of load queue entries that have
 	// experienced an ordering failure with respect to the store that
@@ -203,9 +223,11 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 	// produced by: lsu_control
 	// consumed by: load_queue, store_queue
 	logic store_fired;
-	logic [$clog2(STQ_SIZE)-1:0] store_fired_index;
+	logic [STQ_TAG_WIDTH-1:0] store_fired_tag;
+	logic [STQ_INDEX_WIDTH-1:0] store_fired_index;
+	assign store_fired_index = store_fired_tag[STQ_INDEX_WIDTH-1:0];
 
-	load_queue #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) ldq (
+	load_queue #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .LDQ_TAG_WIDTH(LDQ_TAG_WIDTH), .STQ_SIZE(STQ_SIZE), .STQ_TAG_WIDTH(STQ_TAG_WIDTH)) ldq (
 		.clk(clk),
 		.reset(reset),
 
@@ -221,17 +243,21 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 		.cdb_tag(cdb_tag),
 
 		.load_fired(load_fired),
-		.load_fired_index(load_fired_ldq_index),
+		.load_fired_tag(load_fired_ldq_tag),
 		.load_fired_sleep(load_fired_sleep),
 		.load_fired_sleep_rob_tag(load_fired_sleep_rob_tag),
 		.load_fired_forward(forward),
-		.load_fired_forward_index(stq_forward_index),
+		.load_fired_forward_tag(stq_forward_tag),
 
 		.load_succeeded(load_succeeded),
 		.load_succeeded_rob_tag(load_succeeded_rob_tag),
 
 		.rob_commit(rob_commit),
 		.rob_commit_tag(rob_commit_tag),
+
+		.flush(flush),
+		.flush_rob_tag(flush_rob_tag),
+		.ldq_new_tail(ldq_new_tail),
 
 		.order_failures(order_failures),
 
@@ -249,7 +275,7 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 		.ldq_order_fail(ldq_order_fail),
 		.ldq_store_mask(ldq_store_mask),
 		.ldq_forwarded(ldq_forwarded),
-		.ldq_forward_stq_index(ldq_forward_stq_index),
+		.ldq_forward_stq_tag(ldq_forward_stq_tag),
 		.ldq_rob_tag(ldq_rob_tag),
 
 		.ldq_rotated_valid(ldq_rotated_valid),
@@ -258,11 +284,11 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 		.ldq_rotated_executed(ldq_rotated_executed),
 
 		.head(ldq_head),
-		.tail(),
+		.tail(ldq_tail),
 		.full(ldq_full)
 	);
 
-	store_queue #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .STQ_SIZE(STQ_SIZE)) stq (
+	store_queue #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .STQ_SIZE(STQ_SIZE), .STQ_TAG_WIDTH(STQ_TAG_WIDTH)) stq (
 		.clk(clk),
 		.reset(reset),
 
@@ -277,6 +303,10 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 
 		.rob_commit(rob_commit),
 		.rob_commit_tag(rob_commit_tag),
+
+		.flush(flush),
+		.flush_rob_tag(flush_rob_tag),
+		.stq_new_tail(stq_new_tail),
 
 		.store_fired(store_fired),
 		.store_fired_index(store_fired_index),
@@ -306,12 +336,12 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 		.stq_rotated_succeeded(stq_rotated_succeeded),
 
 		.head(stq_head),
-		.tail(),
+		.tail(stq_tail),
 		.full(stq_full)
 	);
 
 	// combinational component
-	load_store_dep_checker #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) lsdc (
+	load_store_dep_checker #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE), .STQ_TAG_WIDTH(STQ_TAG_WIDTH)) lsdc (
 		.ldq_address(ldq_address),
 		.ldq_store_mask(ldq_store_mask),
 		.stq_valid(stq_valid),
@@ -323,25 +353,25 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 		.stq_head(stq_head),
 
 		.load_fired(load_fired),
-		.load_fired_ldq_index(load_fired_ldq_index),
+		.load_fired_ldq_index(load_fired_ldq_tag[$clog2(LDQ_SIZE)-1:0]),	// TODO: change this
 
 		// outputs
 		.kill_mem_req(kill_mem_req),
 		.sleep(load_fired_sleep),
 		.sleep_rob_tag(load_fired_sleep_rob_tag),
 		.forward(forward),
-		.stq_forward_index(stq_forward_index)
+		.stq_forward_index(stq_forward_tag[$clog2(STQ_SIZE)-1:0])	// TODO change this
 	);
 
 	// combinational component
-	order_failure_detector #(.XLEN(XLEN), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) ofd (
+	order_failure_detector #(.XLEN(XLEN), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE), .STQ_TAG_WIDTH(STQ_TAG_WIDTH)) ofd (
 		// load queue signals
 		.ldq_valid(ldq_valid),
 		.ldq_address(ldq_address),
 		.ldq_succeeded(ldq_succeeded),
 		.ldq_store_mask(ldq_store_mask),
 		.ldq_forwarded(ldq_forwarded),
-		.ldq_forward_stq_index(ldq_forward_stq_index),
+		.ldq_forward_stq_tag(ldq_forward_stq_tag),
 
 		// store queue signals
 		.stq_address(stq_address),
@@ -350,16 +380,13 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 		// comes from control logic, finds the index of the most
 		// recently committed store (should just be head?)
 		.store_fired(store_fired),
-		.store_fired_index(store_fired_index),
+		.store_fired_tag(store_fired_tag),
 
 		// output
-		.order_failures(order_failures),
-		
-		// debug outputs
-		.fwd_index_older_than_store_fired_index()
+		.order_failures(order_failures)
 	);
 
-	lsu_control #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) control (
+	lsu_control #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .LDQ_TAG_WIDTH(LDQ_TAG_WIDTH), .STQ_SIZE(STQ_SIZE), .STQ_TAG_WIDTH(STQ_TAG_WIDTH)) control (
 		// load queue signals
 		.ldq_address(ldq_address),
 		.ldq_rotated_valid(ldq_rotated_valid),
@@ -387,9 +414,9 @@ module load_store_unit #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, paramete
 		.memory_data(memory_data),
 
 		.load_fired(load_fired),
-		.load_fired_ldq_index(load_fired_ldq_index),
+		.load_fired_ldq_tag(load_fired_ldq_tag),
 
 		.store_fired(store_fired),
-		.store_fired_index(store_fired_index)
+		.store_fired_tag(store_fired_tag)
 	);
 endmodule

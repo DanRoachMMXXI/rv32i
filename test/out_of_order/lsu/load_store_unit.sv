@@ -2,7 +2,9 @@ module test_load_store_unit;
 	localparam XLEN = 32;
 	localparam ROB_TAG_WIDTH=32;
 	localparam LDQ_SIZE=16;
+	localparam LDQ_TAG_WIDTH=$clog2(LDQ_SIZE)+2;
 	localparam STQ_SIZE=16;
+	localparam STQ_TAG_WIDTH=$clog2(STQ_SIZE)+2;
 
 	logic clk = 0;
 	logic reset = 0;
@@ -17,6 +19,10 @@ module test_load_store_unit;
 	logic [ROB_TAG_WIDTH-1:0]	agu_address_rob_tag;
 	logic				rob_commit;
 	logic [ROB_TAG_WIDTH-1:0]	rob_commit_tag;
+	logic				flush;
+	logic [ROB_TAG_WIDTH-1:0]	flush_rob_tag;
+	logic [LDQ_TAG_WIDTH-1:0]	ldq_new_tail;
+	logic [STQ_TAG_WIDTH-1:0]	stq_new_tail;
 	logic				load_succeeded;
 	logic [ROB_TAG_WIDTH-1:0]	load_succeeded_rob_tag;
 	logic				store_succeeded;
@@ -36,7 +42,7 @@ module test_load_store_unit;
 	logic [LDQ_SIZE-1:0]				ldq_order_fail;
 	logic [LDQ_SIZE-1:0][STQ_SIZE-1:0]		ldq_store_mask;
 	logic [LDQ_SIZE-1:0]				ldq_forwarded;
-	logic [LDQ_SIZE-1:0][$clog2(STQ_SIZE)-1:0]	ldq_forward_stq_index;
+	logic [LDQ_SIZE-1:0][STQ_TAG_WIDTH-1:0]		ldq_forward_stq_tag;
 	logic [LDQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]		ldq_rob_tag;
 
 	logic [LDQ_SIZE-1:0]				ldq_rotated_valid;
@@ -61,15 +67,17 @@ module test_load_store_unit;
 	logic [STQ_SIZE-1:0] stq_rotated_executed;
 	logic [STQ_SIZE-1:0] stq_rotated_succeeded;
 
-	logic [$clog2(LDQ_SIZE)-1:0] ldq_head;
-	logic [$clog2(STQ_SIZE)-1:0] stq_head;
+	logic [LDQ_TAG_WIDTH-1:0] ldq_head;
+	logic [STQ_TAG_WIDTH-1:0] stq_head;
+	logic [LDQ_TAG_WIDTH-1:0] ldq_tail;
+	logic [STQ_TAG_WIDTH-1:0] stq_tail;
 
 	logic				load_fired;
-	logic [$clog2(LDQ_SIZE)-1:0]	load_fired_ldq_index;
+	logic [LDQ_TAG_WIDTH-1:0]	load_fired_ldq_tag;
 	logic				load_fired_sleep;
 	logic [ROB_TAG_WIDTH-1:0]	load_fired_sleep_rob_tag;
 	logic				forward;
-	logic [$clog2(STQ_SIZE)-1:0]	stq_forward_index;
+	logic [STQ_TAG_WIDTH-1:0]	stq_forward_tag;
 
 	logic [LDQ_SIZE-1:0] order_failures;
 
@@ -79,7 +87,7 @@ module test_load_store_unit;
 	logic [XLEN-1:0]		memory_address;
 	logic [XLEN-1:0]		memory_data;
 
-	load_store_unit #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) lsu (
+	load_store_unit #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .LDQ_TAG_WIDTH(LDQ_TAG_WIDTH), .STQ_SIZE(STQ_SIZE), .STQ_TAG_WIDTH(STQ_TAG_WIDTH)) lsu (
 		.clk(clk),
 		.reset(reset),
 		.alloc_ldq_entry(alloc_ldq_entry),
@@ -92,6 +100,10 @@ module test_load_store_unit;
 		.agu_address_rob_tag(agu_address_rob_tag),
 		.rob_commit(rob_commit),
 		.rob_commit_tag(rob_commit_tag),
+		.flush(flush),
+		.flush_rob_tag(flush_rob_tag),
+		.ldq_new_tail(ldq_new_tail),
+		.stq_new_tail(stq_new_tail),
 		.load_succeeded(load_succeeded),
 		.load_succeeded_rob_tag(load_succeeded_rob_tag),
 		.store_succeeded(store_succeeded),
@@ -111,7 +123,7 @@ module test_load_store_unit;
 		.ldq_order_fail(ldq_order_fail),
 		.ldq_store_mask(ldq_store_mask),
 		.ldq_forwarded(ldq_forwarded),
-		.ldq_forward_stq_index(ldq_forward_stq_index),
+		.ldq_forward_stq_tag(ldq_forward_stq_tag),
 		.ldq_rob_tag(ldq_rob_tag),
 		.ldq_rotated_valid(ldq_rotated_valid),
 		.ldq_rotated_address_valid(ldq_rotated_address_valid),
@@ -134,12 +146,14 @@ module test_load_store_unit;
 		.stq_rotated_succeeded(stq_rotated_succeeded),
 		.ldq_head(ldq_head),
 		.stq_head(stq_head),
+		.ldq_tail(ldq_tail),
+		.stq_tail(stq_tail),
 		.load_fired(load_fired),
-		.load_fired_ldq_index(load_fired_ldq_index),
+		.load_fired_ldq_tag(load_fired_ldq_tag),
 		.load_fired_sleep(load_fired_sleep),
 		.load_fired_sleep_rob_tag(load_fired_sleep_rob_tag),
 		.forward(forward),
-		.stq_forward_index(stq_forward_index),
+		.stq_forward_tag(stq_forward_tag),
 		.order_failures(order_failures),
 		.kill_mem_req(kill_mem_req),
 		.fire_memory_op(fire_memory_op),
@@ -383,12 +397,12 @@ module test_load_store_unit;
 		assert(memory_address == 'h6666_6666);
 		assert(kill_mem_req == 1);
 		assert(forward == 1);
-		assert(stq_forward_index == 2);
+		assert(stq_forward_tag == 2);
 		# 10
 		// the next cycle, the status bits in the load queue should
 		// update.
 		assert(ldq_forwarded == 'h0004);
-		assert(ldq_forward_stq_index[2] == 2);
+		assert(ldq_forward_stq_tag[2] == 2);
 
 		// now we're gonna provide the data for the first store at
 		// index 1 and verify it wakes the sleeping load at ldq index
@@ -408,7 +422,7 @@ module test_load_store_unit;
 		assert(memory_address == 'h4534_2312);
 		assert(kill_mem_req == 1);
 		assert(forward == 1);
-		assert(stq_forward_index == 1);
+		assert(stq_forward_tag == 1);
 
 		// lets commit the first store and verify that the bits of the
 		// store_masks of ldq indices 1 and 2 are cleared
@@ -604,6 +618,57 @@ module test_load_store_unit;
 		# 10
 		assert(ldq_order_fail == 'h0001);
 
+		// TODO: populate load and store queues, then set flush with
+		// a flush_rob_tag that causes some of the entries in both
+		// queues to be flushed.  verify the tail pointers are updated
+		// and the valid arrays are updated correctly.
+		reset = 0;
+		# 10
+		reset = 1;
+		alloc_ldq_entry = 1;
+		rob_tag_in = 4;
+		# 10
+		alloc_ldq_entry = 0;
+		alloc_stq_entry = 1;
+		rob_tag_in = 5;
+		# 10
+		alloc_stq_entry = 0;
+		alloc_ldq_entry = 1;
+		rob_tag_in = 6;
+		# 10;
+		alloc_ldq_entry = 0;
+		alloc_stq_entry = 1;
+		rob_tag_in = 7;
+		# 10
+		alloc_stq_entry = 0;
+		alloc_ldq_entry = 1;
+		rob_tag_in = 8;
+		# 10;
+		alloc_ldq_entry = 0;
+
+		assert(ldq_valid == 'h0007);
+		assert(stq_valid == 'h0003);
+		assert(ldq_rob_tag[0] == 4);
+		assert(ldq_rob_tag[1] == 6);
+		assert(ldq_rob_tag[2] == 8);
+		assert(stq_rob_tag[0] == 5);
+		assert(stq_rob_tag[1] == 7);
+		assert(ldq_tail == 3);
+		assert(stq_tail == 2);
+		// now the LDQ has 3 entries with rob tags 4, 6, and 8, and
+		// the STQ has 2 entries with rob tags 5 and 7.
+		// flushing entry 6 seems appropriate
+		flush = 1;
+		flush_rob_tag = 6;
+		ldq_new_tail = 1;	// index 1 is being flushed
+		stq_new_tail = 1;
+		# 10
+		assert(ldq_valid == 'h0001);
+		assert(stq_valid == 'h0001);
+		assert(ldq_rob_tag[0] == 4);
+		assert(stq_rob_tag[0] == 5);
+		assert(ldq_tail == 1);
+		assert(stq_tail == 1);
 		$display("All assertions passed.");
 		$finish();
 	end
@@ -620,7 +685,7 @@ module test_load_store_unit;
 		$display("ldq_order_fail[%d]: 0x%0h", index, ldq_order_fail[index]);
 		$display("ldq_store_mask[%d]: 0x%0h", index, ldq_store_mask[index]);
 		$display("ldq_forwarded[%d]: %d", index, ldq_forwarded[index]);
-		$display("ldq_forward_stq_index[%d]: %d", index, ldq_forward_stq_index[index]);
+		$display("ldq_forward_stq_index[%d]: %d", index, ldq_forward_stq_tag[index]);
 		$display("ldq_rob_tag[%d]: %d", index, ldq_rob_tag[index]);
 	endfunction
 endmodule

@@ -14,7 +14,7 @@
 * might need to:
 * - handle flushing and reset the tail pointers on flushes
 */
-module lsu_control #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ_SIZE=32, parameter STQ_SIZE=32) (
+module lsu_control #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter LDQ_SIZE, parameter LDQ_TAG_WIDTH, parameter STQ_SIZE, parameter STQ_TAG_WIDTH) (
 	input logic [LDQ_SIZE-1:0][XLEN-1:0]	ldq_address,
 	input logic [LDQ_SIZE-1:0]		ldq_rotated_valid,
 	input logic [LDQ_SIZE-1:0]		ldq_rotated_address_valid,
@@ -27,8 +27,8 @@ module lsu_control #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LD
 	input logic [STQ_SIZE-1:0]		stq_rotated_executed,
 	input logic [STQ_SIZE-1:0]		stq_rotated_committed,
 
-	input logic [$clog2(LDQ_SIZE)-1:0]	ldq_head,
-	input logic [$clog2(STQ_SIZE)-1:0]	stq_head,
+	input logic [LDQ_TAG_WIDTH-1:0]	ldq_head,
+	input logic [STQ_TAG_WIDTH-1:0]	stq_head,
 
 	input logic stq_full,
 
@@ -53,12 +53,12 @@ module lsu_control #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LD
 	// load_fired is set.  this should be the closest entry to
 	// ldq_head with valid and address_valid set, and executed
 	// cleared, and is not sleeping.
-	output logic [$clog2(LDQ_SIZE)-1:0] load_fired_ldq_index,
+	output logic [LDQ_TAG_WIDTH-1:0] load_fired_ldq_tag,
 
 	// these signals serve the same purpose as the load_fired signals
 	// above
 	output logic store_fired,
-	output logic [$clog2(STQ_SIZE)-1:0] store_fired_index
+	output logic [STQ_TAG_WIDTH-1:0] store_fired_tag
 	);
 
 	// how do we pick whether to execute a load or a store?
@@ -75,6 +75,13 @@ module lsu_control #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LD
 	// criteria for each queue, use a LSB priority encoder to select it,
 	// then use the algorithm above to actually determine what's executed
 
+	localparam LDQ_INDEX_WIDTH = $clog2(LDQ_SIZE);
+	localparam STQ_INDEX_WIDTH = $clog2(STQ_SIZE);
+	logic [LDQ_INDEX_WIDTH-1:0]	ldq_head_index;
+	logic [STQ_INDEX_WIDTH-1:0]	stq_head_index;
+	assign ldq_head_index = ldq_head[LDQ_INDEX_WIDTH-1:0];
+	assign stq_head_index = stq_head[STQ_INDEX_WIDTH-1:0];
+
 	logic [LDQ_SIZE-1:0] ldq_ready_entries;
 	assign ldq_ready_entries = ldq_rotated_valid & ldq_rotated_address_valid & ~ldq_rotated_executed & ~ldq_rotated_sleeping;
 	logic can_fire_load;	// ;)
@@ -85,8 +92,10 @@ module lsu_control #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LD
 
 	logic [$clog2(LDQ_SIZE)-1:0] ldq_oldest_ready_index_rotated;
 	logic [$clog2(STQ_SIZE)-1:0] stq_oldest_ready_index_rotated;
-	logic [$clog2(LDQ_SIZE)-1:0] ldq_oldest_ready_index;
-	logic [$clog2(STQ_SIZE)-1:0] stq_oldest_ready_index;
+	logic [LDQ_TAG_WIDTH-1:0] ldq_oldest_ready_tag;
+	logic [LDQ_TAG_WIDTH-1:0] stq_oldest_ready_tag;
+	logic [LDQ_INDEX_WIDTH-1:0] ldq_oldest_ready_index;
+	logic [LDQ_INDEX_WIDTH-1:0] stq_oldest_ready_index;
 
 	lsb_priority_encoder #(.N(LDQ_SIZE)) ldq_ready_index_select (
 		.in(ldq_ready_entries),
@@ -101,8 +110,12 @@ module lsu_control #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LD
 	);
 
 	// get the actual index of the ready buffer entries
-	assign ldq_oldest_ready_index = ldq_oldest_ready_index_rotated + ldq_head;
-	assign stq_oldest_ready_index = stq_oldest_ready_index_rotated + stq_head;
+	// TODO: make sure these size casts do NOT sign extend.  if they do,
+	// recast them using unsigned'(LDQ_TAG_WIDTH'(...))
+	assign ldq_oldest_ready_tag = LDQ_TAG_WIDTH'(ldq_oldest_ready_index_rotated) + ldq_head;
+	assign stq_oldest_ready_tag = STQ_TAG_WIDTH'(stq_oldest_ready_index_rotated) + stq_head;
+	assign ldq_oldest_ready_index = ldq_oldest_ready_tag[LDQ_INDEX_WIDTH-1:0];
+	assign stq_oldest_ready_index = stq_oldest_ready_tag[STQ_INDEX_WIDTH-1:0];
 
 	assign fire_memory_op = can_fire_load | can_fire_store;
 
@@ -118,9 +131,9 @@ module lsu_control #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LD
 		| ({XLEN{store_fired}} & stq_address[stq_oldest_ready_index]);	// store address routing
 	assign memory_data = stq_data[stq_oldest_ready_index];
 
-	// we can just assign load_fired_ldq_index and store_fired_index
+	// we can just assign load_fired_ldq_tag and store_fired_tag
 	// as nothing SHOULD use them if load_fired and store_fired are not set
-	assign load_fired_ldq_index = ldq_oldest_ready_index;
-	assign store_fired_index = stq_oldest_ready_index;
+	assign load_fired_ldq_tag = ldq_oldest_ready_tag;
+	assign store_fired_tag = stq_oldest_ready_tag;
 
 endmodule

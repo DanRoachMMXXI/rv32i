@@ -14,50 +14,37 @@
  */
 // TODO: change age_comparator to use the same age comparison algorithm as the
 // ROB age comparison
-module order_failure_detector #(parameter XLEN=32, parameter LDQ_SIZE=32, parameter STQ_SIZE=32) (
+module order_failure_detector #(parameter XLEN=32, parameter LDQ_SIZE, parameter STQ_SIZE, parameter STQ_TAG_WIDTH) (
 		input logic [LDQ_SIZE-1:0]				ldq_valid,
 		input logic [LDQ_SIZE-1:0][XLEN-1:0]			ldq_address,
 		input logic [LDQ_SIZE-1:0]				ldq_succeeded,
 		input logic [LDQ_SIZE-1:0][STQ_SIZE-1:0]		ldq_store_mask,
 		input logic [LDQ_SIZE-1:0]				ldq_forwarded,
-		input logic [LDQ_SIZE-1:0][$clog2(STQ_SIZE)-1:0]	ldq_forward_stq_index,
+		input logic [LDQ_SIZE-1:0][STQ_TAG_WIDTH-1:0]		ldq_forward_stq_tag,
 
 		input logic [STQ_SIZE-1:0][XLEN-1:0] stq_address,
 
 		// putting these here as I think we are going to need these to
 		// compare the age of different stores by computing how far
 		// away they are from the head.
-		input logic [$clog2(STQ_SIZE)-1:0] stq_head,
+		input logic [STQ_TAG_WIDTH-1:0] stq_head,
 
 		// store_fired: boolean
 		// 1: this store index actually committed
 		// 0: the value is just junk (probably 0 by default)
 		input logic store_fired,
-		input logic [$clog2(STQ_SIZE)-1:0] store_fired_index,
-		output logic [LDQ_SIZE-1:0] order_failures,
-
-		// debug outputs
-		output logic [LDQ_SIZE-1:0] fwd_index_older_than_store_fired_index
+		input logic [STQ_TAG_WIDTH-1:0] store_fired_tag,
+		output logic [LDQ_SIZE-1:0] order_failures
 	);
 
-	// logic [LDQ_SIZE-1:0] fwd_index_older_than_store_fired_index;	// LMAO
-	integer i;
+	localparam STQ_INDEX_WIDTH = $clog2(STQ_SIZE);
+	logic [STQ_INDEX_WIDTH-1:0] store_fired_index;
+	assign store_fired_index = store_fired_tag[STQ_INDEX_WIDTH-1:0];
 
-	genvar generate_iterator;
-	generate
-		for (generate_iterator = 0; generate_iterator < LDQ_SIZE; generate_iterator = generate_iterator + 1) begin
-			age_comparator #(.N($clog2(STQ_SIZE))) age_comparator (
-				.head(stq_head),
-				.a(store_fired_index),
-				.b(ldq_forward_stq_index[generate_iterator]),
-				.result(fwd_index_older_than_store_fired_index[generate_iterator])
-			);
-		end
-	endgenerate
 
 	// order failure detection
 	always_comb begin
-		for (i = 0; i < LDQ_SIZE; i = i + 1) begin
+		for (int i = 0; i < LDQ_SIZE; i = i + 1) begin
 			// While it's not stated so in the BOOM documentation,
 			// I assume we need to check the store mask to know if
 			// a load is dependent on this store.
@@ -69,7 +56,7 @@ module order_failure_detector #(parameter XLEN=32, parameter LDQ_SIZE=32, parame
 				&& ldq_address[i] == stq_address[store_fired_index]
 				// data was not forwarded OR was forwarded from an older store
 				&& (!ldq_forwarded[i] || (
-					ldq_forwarded[i] && fwd_index_older_than_store_fired_index[i]))
+					ldq_forwarded[i] && $signed(ldq_forward_stq_tag[i] - store_fired_tag) < 0))
 			);
 		end
 	end

@@ -9,43 +9,42 @@
  * signals to forward the data are set, otherwise the load is just killed and
  * put to sleep.
  */
-module load_store_dep_checker #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, parameter LDQ_SIZE=32, parameter STQ_SIZE=32) (
+module load_store_dep_checker #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter LDQ_SIZE, parameter STQ_SIZE, parameter STQ_TAG_WIDTH) (
 	input logic [LDQ_SIZE-1:0][XLEN-1:0]		ldq_address,
 	input logic [LDQ_SIZE-1:0][STQ_SIZE-1:0]	ldq_store_mask,
 
-	input logic [STQ_SIZE-1:0] stq_valid,		// is the ENTRY valid
-	input logic [STQ_SIZE-1:0] [XLEN-1:0] stq_address,
-	input logic [STQ_SIZE-1:0] stq_address_valid,
-	input logic [STQ_SIZE-1:0] stq_data_valid,	// is the data for the store present in the entry?
-	input logic [STQ_SIZE-1:0] [ROB_TAG_WIDTH-1:0] stq_rob_tag,	// tell the LDQ which ROB tag it's sleeping on
+	input logic [STQ_SIZE-1:0]			stq_valid,		// is the ENTRY valid
+	input logic [STQ_SIZE-1:0][XLEN-1:0]		stq_address,
+	input logic [STQ_SIZE-1:0]			stq_address_valid,
+	input logic [STQ_SIZE-1:0]			stq_data_valid,	// is the data for the store present in the entry?
+	input logic [STQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]	stq_rob_tag,	// tell the LDQ which ROB tag it's sleeping on
 
 	// putting these here as I think we are going to need these to
 	// compare the age of different stores by computing how far
 	// away they are from the head.
-	input logic [$clog2(STQ_SIZE)-1:0] stq_head,
+	input logic [STQ_TAG_WIDTH-1:0]			stq_head,
 
-	input logic load_fired,
-	input logic [$clog2(LDQ_SIZE)-1:0] load_fired_ldq_index,
+	input logic					load_fired,
+	input logic [$clog2(LDQ_SIZE)-1:0]		load_fired_ldq_index,
 	// kill_mem_req is blocking the request to the memory system (the L1
 	// cache).  unlike what claude said, it WILL be set if data is being
 	// forwarded, because we are not fetching the value that's stored in
 	// memory.
-	output logic kill_mem_req,
-	output logic sleep,
-	output logic [ROB_TAG_WIDTH-1:0] sleep_rob_tag,
-	output logic forward,	// bool, true if forwarding data
-	output logic [$clog2(STQ_SIZE)-1:0] stq_forward_index	// index of forwarded data
+	output logic					kill_mem_req,
+	output logic					sleep,
+	output logic [ROB_TAG_WIDTH-1:0]		sleep_rob_tag,
+	output logic					forward,	// bool, true if forwarding data
+	output logic [$clog2(STQ_SIZE)-1:0]		stq_forward_index	// index of forwarded data
 	);
 
-	logic [STQ_SIZE-1:0] address_matches;
-	logic [$clog2(STQ_SIZE)-1:0] youngest_matching_store_index;
-	integer i;
+	logic [STQ_SIZE-1:0]		address_matches;
+	logic [$clog2(STQ_SIZE)-1:0]	youngest_matching_store_index;
 
 	// module used to select the youngest matching store for the given
 	// load address as we evaluate dependent stores
 	youngest_entry_select #(.QUEUE_SIZE(STQ_SIZE)) youngest_entry_select (
 		.queue_valid_bits(address_matches),
-		.head_index(stq_head),
+		.head_index(stq_head[$clog2(STQ_SIZE)-1:0]),	// TODO: change, but ideally rewrite or remove this module
 
 		// if there's any address match, we kill the memory request
 		// regardless of whether we can forward or not.
@@ -55,7 +54,7 @@ module load_store_dep_checker #(parameter XLEN=32, parameter ROB_TAG_WIDTH=32, p
 	
 	// store dependence and forwarding
 	always_comb begin
-		for (i = 0; i < STQ_SIZE; i = i + 1) begin
+		for (int i = 0; i < STQ_SIZE; i = i + 1) begin
 			address_matches[i] = (
 				load_fired	// is load_fired_ldq_index actually valid this cycle?
 				&& ldq_store_mask[load_fired_ldq_index][i]	// this store is older than the load

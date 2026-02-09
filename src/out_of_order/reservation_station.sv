@@ -1,7 +1,7 @@
 // TODO: need to use valid bits to determine when data is ready or if the tag
 // is valid (either, not both).  I designed this using tag=0 to indicate the
 // value is valid, but I realized that 0 is a valid index in the ROB.
-module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
+module reservation_station #(parameter XLEN=32, parameter ROB_TAG_WIDTH) (
 	input logic clk,
 	input logic reset,
 
@@ -13,13 +13,13 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	// using a valid bit to indicate whether the operand needs to monitor
 	// the CDB for the tag
 	input logic			q1_valid_in,
-	input logic [TAG_WIDTH-1:0]	q1_in,
+	input logic [ROB_TAG_WIDTH-1:0]	q1_in,
 	input logic [XLEN-1:0]		v1_in,
 	input logic			q2_valid_in,
-	input logic [TAG_WIDTH-1:0]	q2_in,
+	input logic [ROB_TAG_WIDTH-1:0]	q2_in,
 	input logic [XLEN-1:0]		v2_in,
 	input control_signal_bus	control_signals_in,
-	input logic [TAG_WIDTH-1:0]	rob_tag_in,
+	input logic [ROB_TAG_WIDTH-1:0]	rob_tag_in,
 
 	// need to store these to execute branches
 	// they should be optimized away during synthesis for the other
@@ -40,20 +40,13 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	input logic			branch_prediction_in,
 
 	input logic			cdb_valid,
-	input wire [TAG_WIDTH-1:0]	cdb_rob_tag,
+	input wire [ROB_TAG_WIDTH-1:0]	cdb_rob_tag,
 	input wire [XLEN-1:0]		cdb_data,
 
-	// TODO: the valid_out signals don't really need to be outputs,
-	// nothing reads them as the interaction with the FU is driven by
-	// ready_to_execute
-	output logic			q1_valid_out,
-	output logic [TAG_WIDTH-1:0]	q1_out,
 	output logic [XLEN-1:0]		v1_out,
-	output logic			q2_valid_out,
-	output logic [TAG_WIDTH-1:0]	q2_out,
 	output logic [XLEN-1:0]		v2_out,
 	output control_signal_bus	control_signals_out,
-	output logic [TAG_WIDTH-1:0]	rob_tag_out,
+	output logic [ROB_TAG_WIDTH-1:0]	rob_tag_out,
 
 	output logic [XLEN-1:0]		pc_out,
 	output logic [XLEN-1:0]		immediate_out,
@@ -63,6 +56,11 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	output logic			busy,
 	output logic			ready_to_execute
 	);
+
+	logic				q1_valid;
+	logic [ROB_TAG_WIDTH-1:0]	q1;
+	logic				q2_valid;
+	logic [ROB_TAG_WIDTH-1:0]	q2;
 
 	logic dispatched;	// FF to track that the instruction has been accepted by the FU
 
@@ -74,14 +72,14 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 	// if enable is set, we're gonna be reading the value on qN_in
 	// and see if that tag is on the CDB.  else, we're just comparing
 	// cdb_rob_tag against what's already in qN_out
-	assign read_cdb_data_op1 = (enable ? q1_valid_in : q1_valid_out)	// is the tag actually valid?
-		&& ((enable ? q1_in : q1_out) == cdb_rob_tag)			// does the tag match what is on the CDB?
+	assign read_cdb_data_op1 = (enable ? q1_valid_in : q1_valid)	// is the tag actually valid?
+		&& ((enable ? q1_in : q1) == cdb_rob_tag)			// does the tag match what is on the CDB?
 		&& cdb_valid;							// is the value on the CDB valid?
-	assign read_cdb_data_op2 = (enable ? q2_valid_in : q2_valid_out)	// same logic as above
-		&& ((enable ? q2_in : q2_out) == cdb_rob_tag)
+	assign read_cdb_data_op2 = (enable ? q2_valid_in : q2_valid)	// same logic as above
+		&& ((enable ? q2_in : q2) == cdb_rob_tag)
 		&& cdb_valid;
 
-	assign ready_to_execute = busy && !dispatched && q1_valid_out == 0 && q2_valid_out == 0;
+	assign ready_to_execute = busy && !dispatched && q1_valid == 0 && q2_valid == 0;
 
 	always @(posedge clk) begin
 		// this is not just the global reset signal, but should also
@@ -89,11 +87,11 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 		// station: i.e. ROB index appears on the CDB or memory
 		// address bus
 		if (!reset) begin
-			q1_valid_out <= 0;
-			q1_out <= 0;
+			q1_valid <= 0;
+			q1 <= 0;
 			v1_out <= 0;
-			q2_valid_out <= 0;
-			q2_out <= 0;
+			q2_valid <= 0;
+			q2 <= 0;
 			v2_out <= 0;
 			control_signals_out <= 0;
 			rob_tag_out <= 0;
@@ -105,15 +103,15 @@ module reservation_station #(parameter XLEN=32, parameter TAG_WIDTH=32) (
 		end else begin
 			// store 0 if the tag matched the cdb tag, else store
 			// input if enable, else retain previous tag
-			q1_valid_out <= (read_cdb_data_op1) ? 1'b0 : (enable) ? q1_valid_in : q1_valid_out;
-			q1_out <= (read_cdb_data_op1) ? 'b0 : (enable) ? q1_in : q1_out;
+			q1_valid <= (read_cdb_data_op1) ? 1'b0 : (enable) ? q1_valid_in : q1_valid;
+			q1 <= (read_cdb_data_op1) ? 'b0 : (enable) ? q1_in : q1;
 			// store cdb data if the tag matches, else store input
 			// if enable, else retain previous data value
 			v1_out <= (read_cdb_data_op1) ? cdb_data : (enable) ? v1_in : v1_out;
 
 			// same logic as above for the second operand
-			q2_valid_out <= (read_cdb_data_op2) ? 1'b0 : (enable) ? q2_valid_in : q2_valid_out;
-			q2_out <= (read_cdb_data_op2) ? 'b0 : (enable) ? q2_in : q2_out;
+			q2_valid <= (read_cdb_data_op2) ? 1'b0 : (enable) ? q2_valid_in : q2_valid;
+			q2 <= (read_cdb_data_op2) ? 'b0 : (enable) ? q2_in : q2;
 			v2_out <= (read_cdb_data_op2) ? cdb_data : (enable) ? v2_in : v2_out;
 
 			// only update dispatched if it's clear, once it's set
@@ -151,11 +149,11 @@ endmodule
  * - TODO: take in flush signal from ROB and reset the RS if flush[rs_rob_tag]
  *   is set.
  */
-module reservation_station_reset #(parameter TAG_WIDTH=32) (
+module reservation_station_reset #(parameter ROB_TAG_WIDTH=32) (
 	input logic global_reset,			// ACTIVE LOW
 	input logic bus_valid,
-	input logic [TAG_WIDTH-1:0] bus_rob_tag,
-	input logic [TAG_WIDTH-1:0] rs_rob_tag,
+	input logic [ROB_TAG_WIDTH-1:0] bus_rob_tag,
+	input logic [ROB_TAG_WIDTH-1:0] rs_rob_tag,
 	output logic reservation_station_reset		// ALSO ACTIVE LOW
 	);
 

@@ -29,16 +29,6 @@
  *   - this is an optimization for WAY later tho, once the out-of-order design
  *   is proven to be working without it.
  *
- * TODO: consider flushing reservation station output buffers
- * this might not be a big deal if we keep the valid bits in the ROB, as long
- * as the ROB refuses to update when it sees the CDB active with a tag that is
- * no longer valid.  Even still, then it will still broadcast a value to the
- * CDB, which will be a wasted cycle.  Also worse, if the ROB does allocate
- * that entry again, and the old value is broadcast on the CDB, then the ROB
- * will update and consumers of the new instruction at that ROB entry will
- * consume the old misspeculated value.
- * I think that settles it, flush the output buffer.
- *
  * TODO: take validation one stage at a time
  * first validate instruction decode
  * then validate instruction decode => RF/Route
@@ -53,6 +43,9 @@
  * An important part of this todo is analyzing all the possible sources that
  * an instruction stall can from.  Is it JUST from the instruction routing?
  * Or can other things stall the front-end?
+ *
+ * TODO: on flush, clear RF tags and tag_valid for instructions not older than
+ * flush_start_tag
  */
 module cpu #(
 	parameter XLEN=32,
@@ -65,7 +58,9 @@ module cpu #(
 	parameter N_BRANCH_RS=1) (
 );
 
-	localparam ROB_TAG_WIDTH = $clog2(ROB_SIZE);
+	localparam ROB_TAG_WIDTH = $clog2(ROB_SIZE) + 2;
+	localparam LDQ_TAG_WIDTH = $clog2(LDQ_SIZE) + 2;
+	localparam STQ_TAG_WIDTH = $clog2(STQ_SIZE) + 2;
 
 	// I needed some convention to follow here for the indices of the
 	// reservation station busses (busy, route, etc) and how they map to
@@ -166,8 +161,9 @@ module cpu #(
 	// functional unit outputs
 	logic [TOTAL_RS-1:0][XLEN-1:0]				FU_result;
 	logic [TOTAL_RS-1:0][ROB_TAG_WIDTH-1:0]			FU_rob_tag;
-	logic [TOTAL_RS-1:0]					FU_exception;
-	logic [BRANCH_RS_END_INDEX:BRANCH_RS_START_INDEX]	FU_mispredicted;
+	logic [TOTAL_RS-1:0]					FU_uarch_exception;
+	logic [TOTAL_RS-1:0]					FU_arch_exception;
+	logic [BRANCH_RS_END_INDEX:BRANCH_RS_START_INDEX]	FU_redirect_mispredicted;
 	logic [TOTAL_RS-1:0]					FU_write_to_buffer;
 	logic [TOTAL_RS-1:0]					FU_buf_not_empty;	// aka data_bus_request
 
@@ -175,7 +171,8 @@ module cpu #(
 	logic				cdb_valid;
 	wire [XLEN-1:0]			cdb_data;
 	wire [ROB_TAG_WIDTH-1:0]	cdb_rob_tag;
-	wire				cdb_exception;
+	wire				cdb_uarch_exception;
+	wire				cdb_arch_exception;
 	wire				cdb_mispredicted;
 
 	// CDB arbitration
@@ -191,45 +188,55 @@ module cpu #(
 	// ROB inputs
 	logic [XLEN-1:0]		rob_value_in;
 	logic				rob_data_ready_in;
-	logic [ROB_TAG_WIDTH-1:0]	rob_new_tail;
 
 	// ROB
 	logic [ROB_SIZE-1:0]		rob_valid;
 	logic [ROB_SIZE-1:0][1:0]	rob_instruction_type;
 	logic [ROB_SIZE-1:0]		rob_address_valid;
-	logic [ROB_SIZE-1:0][XLEN-1:0]	rob_destination;
+	logic [ROB_SIZE-1:0][4:0]	rob_destination;
 	logic [ROB_SIZE-1:0][XLEN-1:0]	rob_value;
 	logic [ROB_SIZE-1:0]		rob_data_ready;
 	logic [ROB_SIZE-1:0]		rob_branch_mispredict;
-	logic [ROB_SIZE-1:0]		rob_exception;
+	logic [ROB_SIZE-1:0]		rob_uarch_exception;
+	logic [ROB_SIZE-1:0]		rob_arch_exception;
 	logic [ROB_SIZE-1:0][XLEN-1:0]	rob_next_instruction;
+	logic [ROB_SIZE-1:0][LDQ_TAG_WIDTH-1:0] rob_ldq_tail;
+	logic [ROB_SIZE-1:0][STQ_TAG_WIDTH-1:0] rob_stq_tail;
 
 	// the instruction committing
 	logic				rob_commit_valid;
 	logic [1:0]			rob_commit_instruction_type;
 	logic				rob_commit_address_valid;
-	logic [XLEN-1:0]		rob_commit_destination;
+	logic [4:0]			rob_commit_destination;
 	logic [XLEN-1:0]		rob_commit_value;
 	logic				rob_commit_data_ready;
 	logic				rob_commit_branch_mispredict;
-	logic				rob_commit_exception;
+	logic				rob_commit_uarch_exception;
+	logic				rob_commit_arch_exception;
 	logic [XLEN-1:0]		rob_commit_next_instruction;
+	logic [LDQ_TAG_WIDTH-1:0]	rob_commit_ldq_tail;
+	logic [STQ_TAG_WIDTH-1:0]	rob_commit_stq_tail;
 
 	logic [ROB_TAG_WIDTH-1:0]	rob_head;
 	logic [ROB_TAG_WIDTH-1:0]	rob_tail;
-	logic				rob_commit;
+	logic				rob_empty;
 	logic				rob_full;
+	logic				rob_commit;
 
-	// exception handling
-	logic				exception;
+	// exception handling / flushing
+	logic				flush;
 	logic [XLEN-1:0]		exception_next_instruction;
-	logic [ROB_SIZE-1:0]		rob_flush;
+	logic [ROB_TAG_WIDTH-1:0]	flush_start_tag;
+	logic [LDQ_TAG_WIDTH-1:0]	ldq_new_tail;
+	logic [STQ_TAG_WIDTH-1:0]	stq_new_tail;
 
 	// LDQ
 	logic ldq_full;
+	logic [LDQ_TAG_WIDTH-1:0]	ldq_tail;
 
 	// STQ
 	logic stq_full;
+	logic [STQ_TAG_WIDTH-1:0]	stq_tail;
 
 	// MEMORY
 	logic			MEM_kill_mem_req;
@@ -260,7 +267,7 @@ module cpu #(
 		.instruction_length(1'b1),
 
 		.prediction(ID_branch_prediction),
-		.exception(exception),
+		.exception(flush),
 
 		.pc_next(pc_next)
 	);
@@ -278,7 +285,7 @@ module cpu #(
 		.jalr(ID_control_signals.jalr),
 		.jalr_fold(1'b0),	// TODO: change this when folding is implemented
 
-		.exception(exception),
+		.flush(flush),
 
 		.rs1_index(ID_control_signals.rs1_index),
 		.rd_index(ID_control_signals.rd_index),
@@ -339,7 +346,7 @@ module cpu #(
 		.rob_full(rob_full),
 		.ldq_full(ldq_full),
 		.stq_full(stq_full),
-		.flush(exception),
+		.flush(flush),
 		.alu_rs_busy(RS_busy[ALU_RS_END_INDEX:ALU_RS_START_INDEX]),
 		.agu_rs_busy(RS_busy[AGU_RS_END_INDEX:AGU_RS_START_INDEX]),
 		.branch_rs_busy(RS_busy[BRANCH_RS_END_INDEX:BRANCH_RS_START_INDEX]),
@@ -427,7 +434,7 @@ module cpu #(
 			// remember to use reservation_station_reset to
 			// connect to the reset pin of the reservation_station
 			// module
-			reservation_station #(.XLEN(XLEN), .TAG_WIDTH($clog2(ROB_SIZE))) alu_rs (
+			reservation_station #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH)) alu_rs (
 				.clk(clk),
 				.reset(RS_reset[alu_genvar]),
 				.enable(RS_route[alu_genvar]),
@@ -448,11 +455,7 @@ module cpu #(
 				.cdb_valid(cdb_valid),
 				.cdb_rob_tag(cdb_rob_tag),
 				.cdb_data(cdb_data),
-				.q1_valid_out(),
-				.q1_out(),
 				.v1_out(RS_v1[alu_genvar]),
-				.q2_valid_out(),
-				.q2_out(),
 				.v2_out(RS_v2[alu_genvar]),
 				.control_signals_out(RS_control_signals[alu_genvar]),
 				.rob_tag_out(RS_rob_tag[alu_genvar]),
@@ -468,7 +471,7 @@ module cpu #(
 				.ready_to_execute(RS_ready_to_execute[alu_genvar])
 			);
 
-			reservation_station_reset #(.TAG_WIDTH($clog2(ROB_SIZE))) rs_reset (
+			reservation_station_reset #(.ROB_TAG_WIDTH(ROB_TAG_WIDTH)) rs_reset (
 				.global_reset(reset),
 				.bus_valid(cdb_valid),
 				.bus_rob_tag(cdb_rob_tag),
@@ -489,22 +492,27 @@ module cpu #(
 				.write_to_buffer(FU_write_to_buffer[alu_genvar])
 			);
 
-			functional_unit_output_buffer #(.XLEN(XLEN), .ROB_SIZE(ROB_SIZE), .ROB_TAG_WIDTH($clog2(ROB_SIZE))) alu_output_buf (
+			functional_unit_output_buffer #(.XLEN(XLEN), .ROB_SIZE(ROB_SIZE), .ROB_TAG_WIDTH(ROB_TAG_WIDTH)) alu_output_buf (
 				.clk(clk),
 				.reset(reset),
-				.value(FU_result[alu_genvar]),
-				.tag(FU_rob_tag[alu_genvar]),
-				.exception(),
-				.redirect_mispredicted(1'b0),
+				.value_in(FU_result[alu_genvar]),
+				.tag_in(FU_rob_tag[alu_genvar]),
+				.uarch_exception_in(1'b0),
+				.arch_exception_in(1'b0),
+				.redirect_mispredicted_in(1'b0),
 				.write_en(FU_write_to_buffer[alu_genvar]),
+				.flush(flush),
+				.flush_start_tag(flush_start_tag),
 				.data_bus_permit(cdb_permit[alu_genvar]),
 				.data_bus_data(cdb_data),
 				.data_bus_tag(cdb_rob_tag),
-				// no need to connect this output buffer to
-				// the exception or misprediction lines of the
-				// CDB if it can't generate either signal
-				.data_bus_exception(),
-				.data_bus_redirect_mispredicted(),
+				// still connecting these exception and
+				// mispredicted signals to ensure they are
+				// driven to 0 if the FU can not generate
+				// these signals, otherwise they are Z
+				.data_bus_uarch_exception(cdb_uarch_exception),
+				.data_bus_arch_exception(cdb_arch_exception),
+				.data_bus_redirect_mispredicted(cdb_mispredicted),
 				.not_empty(FU_buf_not_empty[alu_genvar]),
 				.full()
 			);
@@ -517,7 +525,7 @@ module cpu #(
 	genvar agu_genvar;
 	generate
 		for (agu_genvar = AGU_RS_START_INDEX; agu_genvar <= AGU_RS_END_INDEX; agu_genvar = agu_genvar + 1) begin
-			reservation_station #(.XLEN(XLEN), .TAG_WIDTH($clog2(ROB_SIZE))) agu_rs (
+			reservation_station #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH)) agu_rs (
 				.clk(clk),
 				.reset(RS_reset[agu_genvar]),
 				.enable(RS_route[agu_genvar]),
@@ -538,11 +546,7 @@ module cpu #(
 				.cdb_valid(address_bus_valid),
 				.cdb_rob_tag(address_bus_tag),
 				.cdb_data(address_bus_data),
-				.q1_valid_out(),
-				.q1_out(),
 				.v1_out(RS_v1[agu_genvar]),
-				.q2_valid_out(),
-				.q2_out(),
 				.v2_out(RS_v2[agu_genvar]),
 				.control_signals_out(RS_control_signals[agu_genvar]),
 				.rob_tag_out(RS_rob_tag[agu_genvar]),
@@ -558,7 +562,7 @@ module cpu #(
 				.ready_to_execute(RS_ready_to_execute[agu_genvar])
 			);
 
-			reservation_station_reset #(.TAG_WIDTH($clog2(ROB_SIZE))) rs_reset (
+			reservation_station_reset #(.ROB_TAG_WIDTH(ROB_TAG_WIDTH)) rs_reset (
 				.global_reset(reset),
 				.bus_valid(address_bus_valid),
 				.bus_rob_tag(address_bus_tag),
@@ -577,21 +581,25 @@ module cpu #(
 				.write_to_buffer(FU_write_to_buffer[agu_genvar])
 			);
 
-			functional_unit_output_buffer #(.XLEN(XLEN), .ROB_SIZE(ROB_SIZE), .ROB_TAG_WIDTH($clog2(ROB_SIZE))) agu_output_buf (
+			functional_unit_output_buffer #(.XLEN(XLEN), .ROB_SIZE(ROB_SIZE), .ROB_TAG_WIDTH(ROB_TAG_WIDTH)) agu_output_buf (
 				.clk(clk),
 				.reset(reset),
-				.value(FU_result[agu_genvar]),
-				.tag(FU_rob_tag[agu_genvar]),
+				.value_in(FU_result[agu_genvar]),
+				.tag_in(FU_rob_tag[agu_genvar]),
 				// AGUs can't cause an exception or misprediction
-				.exception(1'b0),
-				.redirect_mispredicted(1'b0),
+				.uarch_exception_in(1'b0),
+				.arch_exception_in(1'b0),
+				.redirect_mispredicted_in(1'b0),
 				.write_en(FU_write_to_buffer[agu_genvar]),
+				.flush(flush),
+				.flush_start_tag(flush_start_tag),
 				.data_bus_permit(address_bus_permit[agu_genvar]),
 				.data_bus_data(address_bus_data),
 				.data_bus_tag(address_bus_tag),
-				// the address bus doesn't have exception or
-				// misprediction signals
-				.data_bus_exception(),
+				// this FU is not connected to the CDB, so we
+				// don't wire these CDB-specific signals
+				.data_bus_uarch_exception(),
+				.data_bus_arch_exception(),
 				.data_bus_redirect_mispredicted(),
 				.not_empty(AGU_FU_buf_not_empty[agu_genvar]),
 				.full()
@@ -603,7 +611,7 @@ module cpu #(
 	genvar branch_genvar;
 	generate
 		for (branch_genvar = BRANCH_RS_START_INDEX; branch_genvar <= BRANCH_RS_END_INDEX; branch_genvar = branch_genvar + 1) begin
-			reservation_station #(.XLEN(XLEN), .TAG_WIDTH($clog2(ROB_SIZE))) branch_rs (
+			reservation_station #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH)) branch_rs (
 				.clk(clk),
 				.reset(RS_reset[branch_genvar]),
 				.enable(RS_route[branch_genvar]),
@@ -624,11 +632,7 @@ module cpu #(
 				.cdb_valid(cdb_valid),
 				.cdb_rob_tag(cdb_rob_tag),
 				.cdb_data(cdb_data),
-				.q1_valid_out(),
-				.q1_out(),
 				.v1_out(RS_v1[branch_genvar]),
-				.q2_valid_out(),
-				.q2_out(),
 				.v2_out(RS_v2[branch_genvar]),
 				.control_signals_out(RS_control_signals[branch_genvar]),
 				.rob_tag_out(RS_rob_tag[branch_genvar]),
@@ -644,7 +648,7 @@ module cpu #(
 				.ready_to_execute(RS_ready_to_execute[branch_genvar])
 			);
 
-			reservation_station_reset #(.TAG_WIDTH($clog2(ROB_SIZE))) rs_reset (
+			reservation_station_reset #(.ROB_TAG_WIDTH(ROB_TAG_WIDTH)) rs_reset (
 				.global_reset(reset),
 				.bus_valid(cdb_valid),
 				.bus_rob_tag(cdb_rob_tag),
@@ -664,7 +668,7 @@ module cpu #(
 				.jalr(RS_control_signals[branch_genvar].jalr),
 				.branch(RS_control_signals[branch_genvar].branch),
 				.next_instruction(FU_result[branch_genvar]),
-				.redirect_mispredicted(FU_mispredicted[branch_genvar]),
+				.redirect_mispredicted(FU_redirect_mispredicted[branch_genvar]),
 				.rob_tag_out(FU_rob_tag[branch_genvar]),
 
 				.ready_to_execute(RS_ready_to_execute[branch_genvar]),
@@ -672,18 +676,22 @@ module cpu #(
 				.write_to_buffer(FU_write_to_buffer[branch_genvar])
 			);
 
-			functional_unit_output_buffer #(.XLEN(XLEN), .ROB_SIZE(ROB_SIZE), .ROB_TAG_WIDTH($clog2(ROB_SIZE))) branch_output_buf (
+			functional_unit_output_buffer #(.XLEN(XLEN), .ROB_SIZE(ROB_SIZE), .ROB_TAG_WIDTH(ROB_TAG_WIDTH)) branch_output_buf (
 				.clk(clk),
 				.reset(reset),
-				.value(FU_result[branch_genvar]),
-				.tag(FU_rob_tag[branch_genvar]),
-				.exception(FU_exception[branch_genvar]),
-				.redirect_mispredicted(FU_mispredicted[branch_genvar]),
+				.value_in(FU_result[branch_genvar]),
+				.tag_in(FU_rob_tag[branch_genvar]),
+				.uarch_exception_in(FU_uarch_exception[branch_genvar]),
+				.arch_exception_in(FU_arch_exception[branch_genvar]),
+				.redirect_mispredicted_in(FU_redirect_mispredicted[branch_genvar]),
 				.write_en(FU_write_to_buffer[branch_genvar]),
+				.flush(flush),
+				.flush_start_tag(flush_start_tag),
 				.data_bus_permit(cdb_permit[branch_genvar]),
 				.data_bus_data(cdb_data),
 				.data_bus_tag(cdb_rob_tag),
-				.data_bus_exception(cdb_exception),
+				.data_bus_uarch_exception(cdb_uarch_exception),
+				.data_bus_arch_exception(cdb_arch_exception),
 				.data_bus_redirect_mispredicted(cdb_mispredicted),
 				.not_empty(FU_buf_not_empty[branch_genvar]),
 				.full()
@@ -691,28 +699,28 @@ module cpu #(
 		end
 	endgenerate
 
-	reorder_buffer #(.XLEN(XLEN), .BUF_SIZE(ROB_SIZE), .TAG_WIDTH($clog2(ROB_SIZE))) reorder_buffer (
+	reorder_buffer #(.XLEN(XLEN), .ROB_SIZE(ROB_SIZE), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_TAG_WIDTH(LDQ_TAG_WIDTH), .STQ_TAG_WIDTH(STQ_TAG_WIDTH)) reorder_buffer (
 		.clk(clk),
 		.reset(reset),
 		.input_en(IR_alloc_rob_entry),
 		.instruction_type_in(IR_control_signals.instruction_type),
-		// just store rd_index at allocation.  the only instructions
-		// that don't write to RD are stores, which update the
-		// destination when an address appears on the address bus
-		.destination_in({27'b0, IR_control_signals.rd_index}),
+		.destination_in(IR_control_signals.rd_index),
 		.value_in(rob_value_in),
 		.data_ready_in(rob_data_ready_in),
 		.pc_in(IR_pc),
+		.ldq_tail_in(ldq_tail),
+		.stq_tail_in(stq_tail),
 		.cdb_valid(cdb_valid),
 		.cdb_data(cdb_data),
 		.cdb_rob_tag(cdb_rob_tag),
-		.cdb_exception(cdb_exception),
+		.cdb_uarch_exception(cdb_uarch_exception),
+		.cdb_arch_exception(cdb_arch_exception),
 		.branch_mispredict(cdb_mispredicted),
 		.agu_address_valid(address_bus_valid),
 		.agu_address_data(address_bus_data),
 		.agu_address_rob_tag(address_bus_tag),
-		.flush(rob_flush),
-		.new_tail(rob_new_tail),
+		.flush(flush),
+		.flush_start_tag(flush_start_tag),
 		.rob_valid(rob_valid),
 		.rob_instruction_type(rob_instruction_type),
 		.rob_address_valid(rob_address_valid),
@@ -720,8 +728,11 @@ module cpu #(
 		.rob_value(rob_value),
 		.rob_data_ready(rob_data_ready),
 		.rob_branch_mispredict(rob_branch_mispredict),
-		.rob_exception(rob_exception),
+		.rob_uarch_exception(rob_uarch_exception),
+		.rob_arch_exception(rob_arch_exception),
 		.rob_next_instruction(rob_next_instruction),
+		.rob_ldq_tail(rob_ldq_tail),
+		.rob_stq_tail(rob_stq_tail),
 		.rob_commit_valid(rob_commit_valid),
 		.rob_commit_instruction_type(rob_commit_instruction_type),
 		.rob_commit_address_valid(rob_commit_address_valid),
@@ -729,40 +740,34 @@ module cpu #(
 		.rob_commit_value(rob_commit_value),
 		.rob_commit_data_ready(rob_commit_data_ready),
 		.rob_commit_branch_mispredict(rob_commit_branch_mispredict),
-		.rob_commit_exception(rob_commit_exception),
+		.rob_commit_uarch_exception(rob_commit_uarch_exception),
+		.rob_commit_arch_exception(rob_commit_arch_exception),
 		.rob_commit_next_instruction(rob_commit_next_instruction),
+		.rob_commit_ldq_tail(rob_commit_ldq_tail),
+		.rob_commit_stq_tail(rob_commit_stq_tail),
 		.head(rob_head),
 		.tail(rob_tail),
-		.commit(rob_commit),
-		.full(rob_full)
+		.empty(rob_empty),
+		.full(rob_full),
+		.commit(rob_commit)
 	);
 
-	buffer_flusher #(.XLEN(XLEN), .BUF_SIZE(ROB_SIZE), .TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) buffer_flusher (
+	buffer_flusher #(.XLEN(XLEN), .ROB_SIZE(ROB_SIZE), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .LDQ_TAG_WIDTH(LDQ_TAG_WIDTH), .STQ_SIZE(STQ_SIZE), .STQ_TAG_WIDTH(STQ_TAG_WIDTH)) buffer_flusher (
 		.rob_branch_mispredict(rob_branch_mispredict),
-		.rob_exception(rob_exception),
+		.rob_uarch_exception(rob_uarch_exception),
 		.rob_head(rob_head),
-		.rob_tail(rob_tail),
 		.rob_next_instruction(rob_next_instruction),
+		.rob_ldq_tail(rob_ldq_tail),
+		.rob_stq_tail(rob_stq_tail),
 
-		.ldq_valid(),
-		.ldq_rob_tag(),
-		.stq_valid(),
-		.stq_rob_tag(),
-
-		.flush(exception),
-
+		.flush(flush),
 		.exception_next_instruction(exception_next_instruction),
-
-		.rob_flush(rob_flush),
-		.rob_new_tail(rob_new_tail),
-
-		.flush_ldq(),
-		.ldq_new_tail(),
-		.flush_stq(),
-		.stq_new_tail()
+		.flush_start_tag(flush_start_tag),
+		.ldq_new_tail(ldq_new_tail),
+		.stq_new_tail(stq_new_tail)
 	);
 
-	load_store_unit #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .STQ_SIZE(STQ_SIZE)) lsu (
+	load_store_unit #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .LDQ_TAG_WIDTH(LDQ_TAG_WIDTH), .STQ_SIZE(STQ_SIZE), .STQ_TAG_WIDTH(STQ_TAG_WIDTH)) lsu (
 		.clk(clk),
 		.reset(reset),
 		.alloc_ldq_entry(IR_alloc_ldq_entry),
@@ -780,6 +785,11 @@ module cpu #(
 		.rob_commit(rob_commit),
 		.rob_commit_tag(rob_head),
 
+		.flush(flush),
+		.flush_rob_tag(flush_start_tag),
+		.ldq_new_tail(ldq_new_tail),
+		.stq_new_tail(stq_new_tail),
+
 		// these signals come from cache/memory
 		.load_succeeded(),
 		.load_succeeded_rob_tag(),
@@ -789,6 +799,9 @@ module cpu #(
 		.cdb_active(cdb_valid),
 		.cdb_data(cdb_data),
 		.cdb_tag(cdb_rob_tag),
+
+		.ldq_tail(ldq_tail),
+		.stq_tail(stq_tail),
 
 		.kill_mem_req(MEM_kill_mem_req),
 		.fire_memory_op(MEM_fire_memory_op),

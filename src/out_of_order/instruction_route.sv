@@ -171,7 +171,7 @@ module instruction_route #(parameter XLEN=32, parameter N_ALU_RS, parameter N_AG
 	assign alloc_stq_entry = valid && (ctl_alloc_stq_entry && !flush && !stall_for_any_reason);
 endmodule
 
-module operand_route #(parameter XLEN=32, parameter ROB_SIZE=64, parameter ROB_TAG_WIDTH=6) (
+module operand_route #(parameter XLEN=32, parameter ROB_SIZE, parameter ROB_TAG_WIDTH) (
 	input logic [6:0]	opcode,
 
 	// inputs from register file
@@ -197,6 +197,12 @@ module operand_route #(parameter XLEN=32, parameter ROB_SIZE=64, parameter ROB_T
 	output logic [XLEN-1:0]			v2
 );
 
+	localparam ROB_INDEX_WIDTH = $clog2(ROB_SIZE);
+	logic [ROB_INDEX_WIDTH-1:0] rs1_rob_index;
+	logic [ROB_INDEX_WIDTH-1:0] rs2_rob_index;
+	assign rs1_rob_index = rs1_rob_tag[ROB_INDEX_WIDTH-1:0];
+	assign rs2_rob_index = rs2_rob_tag[ROB_INDEX_WIDTH-1:0];
+
 	// TODO: LUI and AUIPC are just going to be written stright to the ROB,
 	// so don't route them (more importantly, don't ISSUE them to
 	// a reservation station).
@@ -213,21 +219,21 @@ module operand_route #(parameter XLEN=32, parameter ROB_SIZE=64, parameter ROB_T
 
 	// we need to monitor the CDB for a tag if the register file has a tag
 	// and the ROB cannot yet forward the result
-	assign q1_valid_rs1 = rs1_rob_tag_valid && !rob_data_ready[rs1_rob_tag];
+	assign q1_valid_rs1 = rs1_rob_tag_valid && !rob_data_ready[rs1_rob_index];
 
 	// if we need to use a tag, we simply also need to route the tag
 	assign q1_rs1 = q1_valid_rs1 ? rs1_rob_tag : 0;
 
 	// if we don't need to use a tag, we can just route the value
 	assign v1_rs1 = (!rs1_rob_tag_valid) ? rs1
-		: (rob_data_ready[rs1_rob_tag]) ? rob_value[rs1_rob_tag]
+		: (rob_data_ready[rs1_rob_index]) ? rob_value[rs1_rob_index]
 		: 0;
 
 	// same logic as rs1 above for forwarding/tagging rs2
-	assign q2_valid_rs2 = rs2_rob_tag_valid && !rob_data_ready[rs2_rob_tag];
+	assign q2_valid_rs2 = rs2_rob_tag_valid && !rob_data_ready[rs2_rob_index];
 	assign q2_rs2 = q2_valid_rs2 ? rs2_rob_tag : 0;
 	assign v2_rs2 = (!rs2_rob_tag_valid) ? rs2
-		: (rob_data_ready[rs2_rob_tag]) ? rob_value[rs2_rob_tag]
+		: (rob_data_ready[rs2_rob_index]) ? rob_value[rs2_rob_index]
 		: 0;
 
 	// operand 1 routing

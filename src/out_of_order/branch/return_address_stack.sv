@@ -100,9 +100,7 @@ module ras_control (
 	input logic jalr,	// 0 = JAL, 1 = JALR
 	input logic jalr_fold,	// is the JALR being folded with a U_TYPE instruction, making it deterministic?
 
-	// no checkpoint if we misspeculated, but the RAS also guarantees that
-	// exception = actual exception or misprediction
-	input logic exception,
+	input logic flush,	// if misspecualtion happened, this will restore the checkpoint
 
 	input logic [4:0] rs1_index,
 	input logic [4:0] rd_index,
@@ -125,6 +123,6 @@ module ras_control (
 		!rd_index_match || (rd_index_match && rd_index != rs1_index)
 	);
 
-	assign checkpoint = !exception && (branch || (jump && jalr && !jalr_fold));
-	assign restore_checkpoint = exception;
+	assign checkpoint = !flush && (branch || (jump && jalr && !jalr_fold));
+	assign restore_checkpoint = flush;
 endmodule

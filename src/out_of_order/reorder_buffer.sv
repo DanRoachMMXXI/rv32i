@@ -1,17 +1,20 @@
-// ROB_TAG_WIDTH >= $clog2(ROB_BUF_SIZE) MUST BE SATISFIED
-// if ROB_TAG_WIDTH == $clog2(ROB_BUF_SIZE), it is unaware of wraparound
+// ROB_TAG_WIDTH >= $clog2(ROB_SIZE) MUST BE SATISFIED
+// if ROB_TAG_WIDTH == $clog2(ROB_SIZE), it is unaware of wraparound
 // occurrences
-// if ROB_TAG_WIDTH == $clog2(ROB_BUF_SIZE) + 1, then it uses a phase bit
-// if ROB_TAG_WIDTH > $clog2(ROB_BUF_SIZE) + 1, it contains further extended
+// if ROB_TAG_WIDTH == $clog2(ROB_SIZE) + 1, then it uses a phase bit
+// if ROB_TAG_WIDTH > $clog2(ROB_SIZE) + 1, it contains further extended
 // bits, and can use the sign of the subtraction of tags to compare their age
 // TODO: use the above comparisons to implement age comparison logic
 // throughout the processor.  it would be cool if the differences in tag
 // widths were parameterizable so that performance comparisons could be more
 // easily made in the future.
+//
+// TODO: do SOMETHING about arch_exceptions at the time of instruction commit,
+// including flushing the ENTIRE ROB
 module reorder_buffer #(
 		parameter XLEN=32,
+		parameter ROB_SIZE,
 		parameter ROB_TAG_WIDTH,
-		parameter ROB_BUF_SIZE,
 		parameter LDQ_TAG_WIDTH,
 		parameter STQ_TAG_WIDTH) (
 	// Synchronous input signals
@@ -38,7 +41,12 @@ module reorder_buffer #(
 	input logic			cdb_valid,
 	input wire [XLEN-1:0]		cdb_data,
 	input wire [ROB_TAG_WIDTH-1:0]	cdb_rob_tag,
-	input wire			cdb_exception,
+	// microarchitectural exceptions: i.e. load ordering failures
+	// these are retriable
+	input wire			cdb_uarch_exception,
+	// architectural excpetions: i.e. misaligned address
+	// these need to trap to an exception handler and only do so at COMMIT
+	input wire			cdb_arch_exception,
 	// branch_mispredict is a signal associated with the values on the CDB,
 	// but will only be produced by branch FUs and consumed by the ROB.
 	// As the name implies: has the branch being broadcast on the CDB been
@@ -58,27 +66,28 @@ module reorder_buffer #(
 	input logic [ROB_TAG_WIDTH-1:0]		flush_start_tag,
 
 	// the buffer itself
-	output logic [ROB_BUF_SIZE-1:0]		rob_valid,
-	output logic [ROB_BUF_SIZE-1:0][1:0]	rob_instruction_type,
-	output logic [ROB_BUF_SIZE-1:0]		rob_address_valid,	// for stores only
+	output logic [ROB_SIZE-1:0]		rob_valid,
+	output logic [ROB_SIZE-1:0][1:0]	rob_instruction_type,
+	output logic [ROB_SIZE-1:0]		rob_address_valid,	// for stores only
 
 	// destination is either the register index of rd or the memory
 	// address that the value field will be written to.  whether it writes
 	// to the register file or to memory is controlled by
 	// instruction_type.
-	output logic [ROB_BUF_SIZE-1:0][4:0]	rob_destination,
+	output logic [ROB_SIZE-1:0][4:0]	rob_destination,
 	// value stores the data that will be writted to the destination
 	// field.  For ALU and memory instructions, this is the value that
 	// appears on the CDB.  For branch instructions, this is PC+4, NOT the
 	// value that appears on the CDB.
-	output logic [ROB_BUF_SIZE-1:0][XLEN-1:0]	rob_value,
+	output logic [ROB_SIZE-1:0][XLEN-1:0]	rob_value,
 
 	// data_ready is set either when the entry is allocated if the data is
 	// already available (ex: LUI) or when the ROB tag appears on the
 	// active CDB.
-	output logic [ROB_BUF_SIZE-1:0]		rob_data_ready,
-	output logic [ROB_BUF_SIZE-1:0]		rob_branch_mispredict,
-	output logic [ROB_BUF_SIZE-1:0]		rob_exception,
+	output logic [ROB_SIZE-1:0]		rob_data_ready,
+	output logic [ROB_SIZE-1:0]		rob_branch_mispredict,
+	output logic [ROB_SIZE-1:0]		rob_uarch_exception,
+	output logic [ROB_SIZE-1:0]		rob_arch_exception,
 
 	// In the event of an exception, we need to be able to update the PC
 	// to whatever instruction is correct.  In the case of an exception,
@@ -86,14 +95,14 @@ module reorder_buffer #(
 	// the PC of the excepting instruction.  For branches, we store the
 	// correct next_instruction in this field when it appears on the CDB,
 	// and update the PC if the branch was mispredicted
-	output logic [ROB_BUF_SIZE-1:0][XLEN-1:0]	rob_next_instruction,
+	output logic [ROB_SIZE-1:0][XLEN-1:0]	rob_next_instruction,
 
 	// we store the load and store queue tails at the time of ROB entry
 	// allocation so that they can be directly restored in the event of
 	// a misprediction, microarchitectural exception, or architectural
 	// exception.
-	output logic [ROB_BUF_SIZE-1:0][LDQ_TAG_WIDTH-1:0]	rob_ldq_tail,
-	output logic [ROB_BUF_SIZE-1:0][STQ_TAG_WIDTH-1:0]	rob_stq_tail,
+	output logic [ROB_SIZE-1:0][LDQ_TAG_WIDTH-1:0]	rob_ldq_tail,
+	output logic [ROB_SIZE-1:0][STQ_TAG_WIDTH-1:0]	rob_stq_tail,
 
 	// the specific ROB entry being committed,
 	// this is just rob_field[head], but I don't want to create an
@@ -105,7 +114,8 @@ module reorder_buffer #(
 	output logic [XLEN-1:0]			rob_commit_value,
 	output logic				rob_commit_data_ready,
 	output logic				rob_commit_branch_mispredict,
-	output logic				rob_commit_exception,
+	output logic				rob_commit_uarch_exception,
+	output logic				rob_commit_arch_exception,
 	output logic [XLEN-1:0]			rob_commit_next_instruction,
 	output logic [LDQ_TAG_WIDTH-1:0]	rob_commit_ldq_tail,
 	output logic [STQ_TAG_WIDTH-1:0]	rob_commit_stq_tail,
@@ -126,7 +136,7 @@ module reorder_buffer #(
 	// these signals are just the actual indices of the head and tail
 	// pointers, as well as the cdb and address busses, omitting the phase
 	// bit, so that we can more directly use them to index the buffer
-	localparam ROB_INDEX_WIDTH = $clog2(ROB_BUF_SIZE);
+	localparam ROB_INDEX_WIDTH = $clog2(ROB_SIZE);
 	logic [ROB_INDEX_WIDTH-1:0] head_index;
 	logic [ROB_INDEX_WIDTH-1:0] tail_index;
 	logic [ROB_INDEX_WIDTH-1:0] cdb_rob_tag_index;
@@ -139,7 +149,7 @@ module reorder_buffer #(
 	logic [ROB_TAG_WIDTH-1:0]	n_elements;
 	assign n_elements = tail - head;
 	assign empty = (n_elements == 0);
-	assign full = (n_elements == ROB_BUF_SIZE);
+	assign full = (n_elements == ROB_SIZE);
 
 	always_ff @ (posedge clk) begin
 		if (!reset) begin
@@ -148,7 +158,7 @@ module reorder_buffer #(
 
 			// reset buffer contents
 			// I think the only thing that matters is valid = 0
-			for (int i = 0; i < ROB_BUF_SIZE; i = i + 1) begin
+			for (int i = 0; i < ROB_SIZE; i = i + 1) begin
 				clear_entry(i[ROB_INDEX_WIDTH-1:0]);
 			end
 		end else begin
@@ -156,7 +166,7 @@ module reorder_buffer #(
 				tail <= flush_start_tag;
 
 			// store a new instruction in the buffer
-			for (int i = 0; i < ROB_BUF_SIZE; i = i + 1) begin
+			for (int i = 0; i < ROB_SIZE; i = i + 1) begin
 				if (flush && !($signed(i[ROB_TAG_WIDTH-1:0] - flush_start_tag) < 0)) begin: flush_entry
 					clear_entry(i[ROB_INDEX_WIDTH-1:0]);
 				end: flush_entry
@@ -176,22 +186,20 @@ module reorder_buffer #(
 
 					// read a value off the CDB
 					if (rob_valid[i] && cdb_valid && i[ROB_INDEX_WIDTH-1:0] == cdb_rob_tag_index) begin
-						// if an exception was broadcast on the CDB
-						if (cdb_exception) begin
-							// everything else is irrelevant, this
-							// instrution will be flushed and retried
-							rob_exception[i] <= cdb_exception;
-							
-							// it is critical that we do NOT execute the below logic for a branch
-							// because we do not want to overwrite the value in next_instruction
-							// since we need to retry the execution of the branch.
-						end
-						// else if branch instruction
-						else if (rob_instruction_type[i] == 'b01) begin
+						rob_uarch_exception[i] <= cdb_uarch_exception;
+						rob_arch_exception[i] <= cdb_arch_exception;
+						rob_branch_mispredict[i] <= branch_mispredict;
+						// if an exception occurred, everything else is irrelevant, this
+						// instrution will be flushed and retried it is then also critical
+						// that we do NOT execute the below logic for a branch because we do
+						// not want to overwrite the value in next_instruction since we need
+						// to retry the execution of the branch. If branches can ever incur
+						// a microarchitectural exception, this needs to be updated to also
+						// not execute if cdb_uarch_exception == 1
+
+						if (!cdb_arch_exception && rob_instruction_type[i] == 'b01) begin
 							// store the CDB value in next_instruction (this is routed to PC)
 							rob_next_instruction[i] <= cdb_data;
-							// check the branch_mispredict only if this instruction is a branch
-							rob_branch_mispredict[i] <= branch_mispredict;
 						end else begin
 							// else the CDB data is to be stored in the register file or memory.
 							rob_value[i] <= cdb_data;
@@ -237,7 +245,8 @@ module reorder_buffer #(
 	assign rob_commit_value = rob_value[head_index];
 	assign rob_commit_data_ready = rob_data_ready[head_index];
 	assign rob_commit_branch_mispredict = rob_branch_mispredict[head_index];
-	assign rob_commit_exception = rob_exception[head_index];
+	assign rob_commit_uarch_exception = rob_uarch_exception[head_index];
+	assign rob_commit_arch_exception = rob_arch_exception[head_index];
 	assign rob_commit_next_instruction = rob_next_instruction[head_index];
 	assign rob_commit_ldq_tail = rob_ldq_tail[head_index];
 	assign rob_commit_stq_tail = rob_stq_tail[head_index];
@@ -250,32 +259,29 @@ module reorder_buffer #(
 		rob_value[index] <= 0;
 		rob_data_ready[index] <= 0;
 		rob_branch_mispredict[index] <= 0;
-		rob_exception[index] <= 0;
+		rob_uarch_exception[index] <= 0;
+		rob_arch_exception[index] <= 0;
 		rob_next_instruction[index] <= 0;
 		rob_ldq_tail[index] <= 0;
 		rob_stq_tail[index] <= 0;
 	endfunction
 endmodule
 
-// TODO: handle flushing load and store queues too
-// for the load and store queues, we probably just take the ROB tags in each
-// entry and subtract rob_head from them, so we can compare their age to
-// rotated_oldest_exception_index to evaluate whether they need to be flushed.
 // TODO: also flush reservation stations holding misspecualted instructions
 // - reservation_station_reset probably takes in the flush output from this
 //   module and checks if the bit at index rs_rob_tag is set
 // TODO: also remember to flush instructions in the decode/RF stages
-module buffer_flusher #(parameter XLEN=32, parameter ROB_BUF_SIZE, parameter ROB_TAG_WIDTH, parameter LDQ_SIZE, parameter LDQ_TAG_WIDTH, parameter STQ_SIZE, parameter STQ_TAG_WIDTH) (
+module buffer_flusher #(parameter XLEN=32, parameter ROB_SIZE, parameter ROB_TAG_WIDTH, parameter LDQ_SIZE, parameter LDQ_TAG_WIDTH, parameter STQ_SIZE, parameter STQ_TAG_WIDTH) (
 	// decided to not take in the valid signal for now, since I know
 	// I designed the buffer to only update entries that are valid
-	input logic [ROB_BUF_SIZE-1:0]			rob_branch_mispredict,
-	input logic [ROB_BUF_SIZE-1:0]			rob_exception,
+	input logic [ROB_SIZE-1:0]			rob_branch_mispredict,
+	input logic [ROB_SIZE-1:0]			rob_uarch_exception,
 	input logic [ROB_TAG_WIDTH-1:0]			rob_head,
 	// we have to use the identified exception to select the next
 	// instruction to execute
-	input logic [ROB_BUF_SIZE-1:0][XLEN-1:0]	rob_next_instruction,
-	input logic [ROB_BUF_SIZE-1:0][LDQ_TAG_WIDTH-1:0]	rob_ldq_tail,
-	input logic [ROB_BUF_SIZE-1:0][STQ_TAG_WIDTH-1:0]	rob_stq_tail,
+	input logic [ROB_SIZE-1:0][XLEN-1:0]		rob_next_instruction,
+	input logic [ROB_SIZE-1:0][LDQ_TAG_WIDTH-1:0]	rob_ldq_tail,
+	input logic [ROB_SIZE-1:0][STQ_TAG_WIDTH-1:0]	rob_stq_tail,
 
 	output logic					flush,	// bool - are we flushing the pipeline?  intended for front end
 
@@ -289,28 +295,28 @@ module buffer_flusher #(parameter XLEN=32, parameter ROB_BUF_SIZE, parameter ROB
 );
 	// I opted to rotate both mispredicted and exception so that once the
 	// index of the oldest instruction causing a flush is found, we can
-	// compare it against rotated_exception to see if that instruction is
+	// compare it against rotated_uarch_exception to see if that instruction is
 	// an exception.  This is important in determining if we need to flush
 	// that instruction from the ROB.  If it's an exception, it needs to
 	// be flushed from the ROB.  If it's just a branch misprediction, it
 	// must remain in the ROB so that it can commit.
-	logic [ROB_BUF_SIZE-1:0]	rotated_mispredict;
-	logic [ROB_BUF_SIZE-1:0]	rotated_exception;
-	logic [ROB_BUF_SIZE-1:0]	rotated_mispredict_or_exception;	// this is used to find the index of the ROB entry that needs to be flushed
-	logic [ROB_BUF_SIZE-1:0]	rob_rotated_flush;
+	logic [ROB_SIZE-1:0]	rotated_mispredict;
+	logic [ROB_SIZE-1:0]	rotated_uarch_exception;
+	logic [ROB_SIZE-1:0]	rotated_mispredict_or_exception;	// this is used to find the index of the ROB entry that needs to be flushed
+	logic [ROB_SIZE-1:0]	rob_rotated_flush;
 
-	localparam ROB_INDEX_WIDTH = $clog2(ROB_BUF_SIZE);
+	localparam ROB_INDEX_WIDTH = $clog2(ROB_SIZE);
 	logic [ROB_INDEX_WIDTH-1:0]	rob_head_index;
 	logic [ROB_INDEX_WIDTH-1:0]	rotated_oldest_exception_index;
 	logic [ROB_INDEX_WIDTH-1:0]	oldest_exception_index;
 	logic [ROB_INDEX_WIDTH-1:0]	rotated_flush_start_index;	// what index does the flush actually start from?
 
 	assign rob_head_index = rob_head[ROB_INDEX_WIDTH-1:0];
-	assign rotated_mispredict = (rob_branch_mispredict >> rob_head_index) | (rob_branch_mispredict << (ROB_BUF_SIZE - rob_head_index));
-	assign rotated_exception = (rob_exception >> rob_head_index) | (rob_exception << (ROB_BUF_SIZE - rob_head_index));
-	assign rotated_mispredict_or_exception = rotated_mispredict | rotated_exception;
+	assign rotated_mispredict = (rob_branch_mispredict >> rob_head_index) | (rob_branch_mispredict << (ROB_SIZE - rob_head_index));
+	assign rotated_uarch_exception = (rob_uarch_exception >> rob_head_index) | (rob_uarch_exception << (ROB_SIZE - rob_head_index));
+	assign rotated_mispredict_or_exception = rotated_mispredict | rotated_uarch_exception;
 
-	lsb_priority_encoder #(.N(ROB_BUF_SIZE)) oldest_exception_finder /* idk man */ (
+	lsb_priority_encoder #(.N(ROB_SIZE)) oldest_exception_finder /* idk man */ (
 		.in(rotated_mispredict_or_exception),
 		.out(rotated_oldest_exception_index),
 		.valid(flush)
@@ -324,7 +330,7 @@ module buffer_flusher #(parameter XLEN=32, parameter ROB_BUF_SIZE, parameter ROB
 	// caused by a branch misprediction, the flush starts at the index of
 	// the instruction following the branch (the branch result is still
 	// valid and thus needs to commit).
-	assign rotated_flush_start_index = rotated_exception[rotated_oldest_exception_index] ? rotated_oldest_exception_index : rotated_oldest_exception_index + 1;
+	assign rotated_flush_start_index = rotated_uarch_exception[rotated_oldest_exception_index] ? rotated_oldest_exception_index : rotated_oldest_exception_index + 1;
 
 	// flush_start_index will become the new tail of the ROB
 	// TODO: verify this works with phase bits/extended tags, and verify

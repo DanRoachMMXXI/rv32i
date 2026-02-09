@@ -1,9 +1,11 @@
 import instruction_type::*;	// consts for convenience
 
+// TODO: test architectural exceptions and handling on COMMIT
+
 module test_reorder_buffer;
 	localparam XLEN = 32;
-	localparam ROB_BUF_SIZE = 16;
-	localparam ROB_TAG_WIDTH = $clog2(ROB_BUF_SIZE) + 2;
+	localparam ROB_SIZE = 16;
+	localparam ROB_TAG_WIDTH = $clog2(ROB_SIZE) + 2;
 	localparam LDQ_SIZE = 16;
 	localparam LDQ_TAG_WIDTH = $clog2(LDQ_SIZE) + 2;
 	localparam STQ_SIZE = 16;
@@ -24,7 +26,8 @@ module test_reorder_buffer;
 	logic					cdb_valid;
 	logic [XLEN-1:0]			cdb_data;
 	logic [ROB_TAG_WIDTH-1:0]		cdb_rob_tag;
-	logic					cdb_exception;
+	logic					cdb_uarch_exception;
+	logic					cdb_arch_exception;
 	logic					branch_mispredict;
 
 	logic					agu_address_valid;
@@ -36,17 +39,18 @@ module test_reorder_buffer;
 	logic [LDQ_TAG_WIDTH-1:0]		ldq_new_tail;
 	logic [STQ_TAG_WIDTH-1:0]		stq_new_tail;
 
-	logic [ROB_BUF_SIZE-1:0]		rob_valid;
-	logic [ROB_BUF_SIZE-1:0][1:0]		rob_instruction_type;
-	logic [ROB_BUF_SIZE-1:0]		rob_address_valid;
-	logic [ROB_BUF_SIZE-1:0][4:0]		rob_destination;
-	logic [ROB_BUF_SIZE-1:0][XLEN-1:0]	rob_value;
-	logic [ROB_BUF_SIZE-1:0]		rob_data_ready;
-	logic [ROB_BUF_SIZE-1:0]		rob_branch_mispredict;
-	logic [ROB_BUF_SIZE-1:0]		rob_exception;
-	logic [ROB_BUF_SIZE-1:0][XLEN-1:0]	rob_next_instruction;
-	logic [ROB_BUF_SIZE-1:0][LDQ_TAG_WIDTH-1:0]	rob_ldq_tail;
-	logic [ROB_BUF_SIZE-1:0][STQ_TAG_WIDTH-1:0]	rob_stq_tail;
+	logic [ROB_SIZE-1:0]		rob_valid;
+	logic [ROB_SIZE-1:0][1:0]		rob_instruction_type;
+	logic [ROB_SIZE-1:0]		rob_address_valid;
+	logic [ROB_SIZE-1:0][4:0]		rob_destination;
+	logic [ROB_SIZE-1:0][XLEN-1:0]	rob_value;
+	logic [ROB_SIZE-1:0]		rob_data_ready;
+	logic [ROB_SIZE-1:0]		rob_branch_mispredict;
+	logic [ROB_SIZE-1:0]		rob_uarch_exception;
+	logic [ROB_SIZE-1:0]		rob_arch_exception;
+	logic [ROB_SIZE-1:0][XLEN-1:0]	rob_next_instruction;
+	logic [ROB_SIZE-1:0][LDQ_TAG_WIDTH-1:0]	rob_ldq_tail;
+	logic [ROB_SIZE-1:0][STQ_TAG_WIDTH-1:0]	rob_stq_tail;
 	logic [ROB_TAG_WIDTH-1:0]		head;
 	logic [ROB_TAG_WIDTH-1:0]		tail;
 	logic					empty;
@@ -56,24 +60,27 @@ module test_reorder_buffer;
 	logic					tb_drive_cdb;	// the testbench drives the CDB, as though it were given access to do so by the CDB arbiter
 	logic [XLEN-1:0]			tb_cdb_data;
 	logic [ROB_TAG_WIDTH-1:0]		tb_cdb_rob_tag;
-	logic					tb_cdb_exception;
+	logic					tb_cdb_uarch_exception;
+	logic					tb_cdb_arch_exception;
 	logic					tb_branch_mispredict;
 
 	always_comb
 		if (tb_drive_cdb) begin
 			cdb_data = tb_cdb_data;
 			cdb_rob_tag = tb_cdb_rob_tag;
-			cdb_exception = tb_cdb_exception;
+			cdb_uarch_exception = tb_cdb_uarch_exception;
+			cdb_arch_exception = tb_cdb_arch_exception;
 			branch_mispredict = tb_branch_mispredict;
 		end else begin
 			cdb_data = 'bZ;
 			cdb_rob_tag = {ROB_TAG_WIDTH{1'bZ}};
-			cdb_exception = 1'bZ;
+			cdb_uarch_exception = 1'bZ;
+			cdb_arch_exception = 1'bZ;
 			branch_mispredict = 1'bZ;
 		end
 
 
-	reorder_buffer #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .ROB_BUF_SIZE(ROB_BUF_SIZE), .LDQ_TAG_WIDTH(LDQ_TAG_WIDTH), .STQ_TAG_WIDTH(STQ_TAG_WIDTH)) rob (
+	reorder_buffer #(.XLEN(XLEN), .ROB_SIZE(ROB_SIZE), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_TAG_WIDTH(LDQ_TAG_WIDTH), .STQ_TAG_WIDTH(STQ_TAG_WIDTH)) rob (
 		.clk(clk),
 		.reset(reset),
 		.input_en(input_en),
@@ -87,7 +94,8 @@ module test_reorder_buffer;
 		.cdb_valid(cdb_valid),
 		.cdb_data(cdb_data),
 		.cdb_rob_tag(cdb_rob_tag),
-		.cdb_exception(cdb_exception),
+		.cdb_uarch_exception(cdb_uarch_exception),
+		.cdb_arch_exception(cdb_arch_exception),
 		.branch_mispredict(branch_mispredict),
 		.agu_address_valid(agu_address_valid),
 		.agu_address_data(agu_address_data),
@@ -101,7 +109,8 @@ module test_reorder_buffer;
 		.rob_value(rob_value),
 		.rob_data_ready(rob_data_ready),
 		.rob_branch_mispredict(rob_branch_mispredict),
-		.rob_exception(rob_exception),
+		.rob_uarch_exception(rob_uarch_exception),
+		.rob_arch_exception(rob_arch_exception),
 		.rob_next_instruction(rob_next_instruction),
 		.rob_ldq_tail(rob_ldq_tail),
 		.rob_stq_tail(rob_stq_tail),
@@ -113,7 +122,8 @@ module test_reorder_buffer;
 		.rob_commit_value(),
 		.rob_commit_data_ready(),
 		.rob_commit_branch_mispredict(),
-		.rob_commit_exception(),
+		.rob_commit_uarch_exception(),
+		.rob_commit_arch_exception(),
 		.rob_commit_next_instruction(),
 		.rob_commit_ldq_tail(),
 		.rob_commit_stq_tail(),
@@ -124,9 +134,9 @@ module test_reorder_buffer;
 		.commit(commit)
 	);
 
-	buffer_flusher #(.ROB_BUF_SIZE(ROB_BUF_SIZE), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .LDQ_TAG_WIDTH(LDQ_TAG_WIDTH), .STQ_SIZE(STQ_SIZE), .STQ_TAG_WIDTH(STQ_TAG_WIDTH)) buffer_flusher (
+	buffer_flusher #(.ROB_SIZE(ROB_SIZE), .ROB_TAG_WIDTH(ROB_TAG_WIDTH), .LDQ_SIZE(LDQ_SIZE), .LDQ_TAG_WIDTH(LDQ_TAG_WIDTH), .STQ_SIZE(STQ_SIZE), .STQ_TAG_WIDTH(STQ_TAG_WIDTH)) buffer_flusher (
 		.rob_branch_mispredict(rob_branch_mispredict),
-		.rob_exception(rob_exception),
+		.rob_uarch_exception(rob_uarch_exception),
 		.rob_head(head),
 		.rob_next_instruction(rob_next_instruction),
 		.rob_ldq_tail(rob_ldq_tail),
@@ -163,7 +173,7 @@ module test_reorder_buffer;
 		assert(rob_instruction_type[0] == ALU);
 		assert(rob_destination[0] == 10);
 		assert(rob_data_ready == 'h0000);
-		assert(rob_exception == 'h0000);
+		assert(rob_uarch_exception == 'h0000);
 		assert(head == 0);
 		assert(tail == 1);
 		assert(commit == 0);
@@ -323,12 +333,12 @@ module test_reorder_buffer;
 		$finish();
 	end
 
-	function void drive_cdb(logic [XLEN-1:0] data, logic [ROB_TAG_WIDTH-1:0] tag, logic exception, logic branch_mispredict);
+	function void drive_cdb(logic [XLEN-1:0] data, logic [ROB_TAG_WIDTH-1:0] tag, logic uarch_exception, logic branch_mispredict);
 		cdb_valid = 1;
 		tb_drive_cdb = 1;
 		tb_cdb_data = data;
 		tb_cdb_rob_tag = tag;
-		tb_cdb_exception = exception;
+		tb_cdb_uarch_exception = uarch_exception;
 		tb_branch_mispredict = branch_mispredict;
 	endfunction
 

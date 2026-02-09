@@ -145,7 +145,7 @@ module load_store_unit #(
 	logic [LDQ_SIZE-1:0]				ldq_order_fail;
 	logic [LDQ_SIZE-1:0][STQ_SIZE-1:0]		ldq_store_mask;
 	logic [LDQ_SIZE-1:0]				ldq_forwarded;
-	logic [LDQ_SIZE-1:0][$clog2(STQ_SIZE)-1:0]	ldq_forward_stq_tag;
+	logic [LDQ_SIZE-1:0][STQ_TAG_WIDTH-1:0]		ldq_forward_stq_tag;
 	logic [LDQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]		ldq_rob_tag;
 
 	logic [LDQ_SIZE-1:0]				ldq_rotated_valid;

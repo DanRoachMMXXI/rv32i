@@ -8,12 +8,19 @@
  * bus, as you can just assign 0 to it.
  */
 typedef struct packed {
-	// carry forward the opcode and funct3 in cases where specific
-	// instructions need to be checked
-	// TODO: eliminate references to opcode, and do the appropriate
-	// decoding in the Instruction Decode stage
-	logic [6:0] opcode;
+	// carry forward funct3, as it's already encoded for use by the ALU
 	logic [2:0] funct3;
+
+	// valid exists for a couple reasons
+	// - if a pipeline stage is reset to 0, valid will be set to 0, so the
+	// router will use that to ensure nothing is allocated in the ROB or
+	// load and store queues
+	// - if an instruction in the route stage is folded into an
+	// instruction in the decode stage, the decode stage can clear the
+	// valid bit seen by the router to again ensure nothing is allocated
+	// in the ROB (or load and store queues if those instructions are ever
+	// folded).
+	logic	valid;
 
 	// boolean to indicate length of the instruction, in case I support
 	// compressed instructions in the future
@@ -84,4 +91,18 @@ typedef struct packed {
 	logic alloc_rob_entry;
 	logic alloc_ldq_entry;
 	logic alloc_stq_entry;
+
+	logic fold;
+
+	// source for operand 1 for the out-of-order design
+	// 2'b00: 0
+	// 2'b01: pc
+	// 2'b1X: rs1
+	logic [1:0] op1_src;
+
+	// source for operand 2 for the out-of-order design
+	// 2'b00: 0
+	// 2'b01: immediate
+	// 2'b1X: rs2
+	logic [1:0] op2_src;
 } control_signal_bus;

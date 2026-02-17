@@ -11,9 +11,16 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter STQ_S
 	input logic reset,
 
 	input logic					alloc_stq_entry,
+
+	// rob_tag_in: the ROB tag of the store instruction being allocated
 	input logic [ROB_TAG_WIDTH-1:0]			rob_tag_in,
-	input logic [XLEN-1:0]				store_data_in,	// store the data if it's already available
+	// store_data_in: the data to be written to memory, if valid
+	input logic [XLEN-1:0]				store_data_in,
+	// store_data_in_valid: boolean to determine whether store_data_in is valid
 	input logic					store_data_in_valid,
+	// data_producer_rob_tag_in: ROB tag of the instruction that will produce the data to be
+	// written to memory, if store_data_in_valid is NOT set.
+	input logic [ROB_TAG_WIDTH-1:0]			data_producer_rob_tag_in,
 
 	input logic					agu_address_valid,
 	input logic [XLEN-1:0]				agu_address_data,
@@ -46,6 +53,7 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter STQ_S
 	output logic [STQ_SIZE-1:0]			stq_address_valid,
 	output logic [STQ_SIZE-1:0][XLEN-1:0]		stq_data,
 	output logic [STQ_SIZE-1:0]			stq_data_valid,	// is the data for the store present in the entry?
+	output logic [STQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]	stq_data_producer_rob_tag,	// ROB tag for data to be read from the CDB
 	output logic [STQ_SIZE-1:0]			stq_committed,
 	// we need to track if we've executed this so we don't
 	// issue it again while waiting for the succeeded signal
@@ -67,8 +75,6 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter STQ_S
 	output logic [STQ_TAG_WIDTH-1:0]		head,
 	output logic [STQ_TAG_WIDTH-1:0]		tail,
 	output logic					full
-
-	// TODO: flush signals
 	);
 
 	localparam STQ_INDEX_WIDTH = $clog2(STQ_SIZE);
@@ -100,12 +106,16 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter STQ_S
 						stq_valid[i] <= 1;
 						stq_rob_tag[i] <= rob_tag_in;
 
-						// if the data to store is already available,
-						// store it in the queue
-						// no need for a conditional since data_valid
-						// will reflect if the data was avilable
+						// if the data to store is already available, store
+						// it in the queue
+						// no need for a conditional since data_valid will
+						// reflect if the data was avilable
+						// TODO: ENSURE THAT THIS PICKS UP THE VALUE ON THE
+						// CDB THIS CYCLE JUST LIKE THE RESERVATION STATIONS
+						// DO.
 						stq_data[i] <= store_data_in;
 						stq_data_valid[i] <= store_data_in_valid;
+						stq_data_producer_rob_tag[i] <= data_producer_rob_tag_in;
 
 						tail <= tail + 1;
 					end
@@ -119,7 +129,11 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter STQ_S
 						stq_address_valid[i] <= 1;
 					end
 
-					if (stq_valid[i] && cdb_active && cdb_tag == stq_rob_tag[i]) begin
+					// read a value from the CDB
+					// stq_data_valid = 0 means that stq_data_producer_rob_tag is valid.
+					// otherwise, we don't want to mistakenly overwrite valid data (ex:
+					// producer tag has default value of 0, and 0 appears on the CDB)
+					if (stq_valid[i] && !stq_data_valid[i] && cdb_active && cdb_tag == stq_data_producer_rob_tag[i]) begin
 						stq_data[i] <= cdb_data;
 						stq_data_valid[i] <= 1;
 					end
@@ -132,9 +146,8 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter STQ_S
 						stq_succeeded[i] <= 1;
 					end
 
-					// if the entry at the head of the queue is
-					// succeeded, clear it and increment the head
-					// pointer
+					// if the entry at the head of the queue is succeeded, clear
+					// it and increment the head pointer
 					if (stq_valid[i] && stq_succeeded[i]) begin
 						clear_entry(i[STQ_INDEX_WIDTH-1:0]);
 						head <= head + 1;
@@ -144,9 +157,8 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter STQ_S
 		end
 	end
 
-	// Since the tail pointer points to the next available entry in the
-	// buffer, if that entry has the valid bit set, there are no more
-	// available entries and the buffer is full.
+	// Since the tail pointer points to the next available entry in the buffer, if that entry
+	// has the valid bit set, there are no more available entries and the buffer is full.
 	assign full = stq_valid[tail_index];
 
 	assign stq_rotated_valid = (stq_valid >> head) | (stq_valid << (STQ_SIZE - head));
@@ -162,6 +174,7 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter STQ_S
 		stq_address_valid[index] <= 0;
 		stq_data[index] <= 0;
 		stq_data_valid[index] <= 0;
+		stq_data_producer_rob_tag[index] <= 0;
 		stq_committed[index] <= 0;
 		stq_executed[index] <= 0;
 		stq_succeeded[index] <= 0;

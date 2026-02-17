@@ -168,7 +168,9 @@ module out_of_order_decode (
 	output logic [1:0] instruction_type,
 	output logic alloc_rob_entry,
 	output logic alloc_ldq_entry,
-	output logic alloc_stq_entry
+	output logic alloc_stq_entry,
+	output logic [1:0]	op1_src,
+	output logic [1:0]	op2_src
 	);
 
 	always_comb begin
@@ -197,6 +199,49 @@ module out_of_order_decode (
 	assign alloc_rob_entry = 1'b1;
 	assign alloc_ldq_entry = (opcode == 'b0000011);	// I_TYPE_LOAD
 	assign alloc_stq_entry = (opcode == 'b0100011);	// S_TYPE
+
+	// operand 1 routing encoding
+	always_comb begin
+		unique case (opcode)
+			'b0110111,	// LUI
+			'b0000000:	// inserted stall, will not be routed to anything
+				op1_src = 2'b00;
+			'b1101111,	// JAL
+			'b0010111:	// AUIPC
+				op1_src = 2'b01;
+			'b0110011,	// R_TYPE
+			'b0010011,	// I_TYPE_ALU
+			'b0000011,	// I_TYPE_LOAD
+			'b1100111,	// I_TYPE_JALR
+			'b1100011,	// B_TYPE
+			'b0100011:	// S_TYPE
+				op1_src = 2'b10;
+		endcase
+	end
+
+	// operand 2 routing encoding
+	always_comb begin
+		unique case (opcode)
+			// inserted stall, will not be routed to anything
+			'b0000000:
+				op2_src = 2'b00;
+
+			// operand 2 comes from the immediate for these opcodes
+			'b0010011,	// I_TYPE_ALU
+			'b0000011,	// I_TYPE_LOAD
+			'b1100111,	// I_TYPE_JALR
+			'b1101111,	// JAL
+			'b0110111,	// LUI
+			'b0010111:	// AUIPC
+				op2_src = 2'b01;
+
+			// operand 2 comes from rs2 for these opcodes
+			'b0110011,	// R_TYPE
+			'b1100011,	// B_TYPE
+			'b0100011:	// S_TYPE
+				op2_src = 2'b10;
+		endcase
+	end
 endmodule
 
 module instruction_decode #(parameter XLEN=32) (
@@ -211,8 +256,20 @@ module instruction_decode #(parameter XLEN=32) (
 	assign opcode = instruction[6:0];
 	assign funct3 = instruction[14:12];
 
-	assign control_signals.opcode = opcode;
 	assign control_signals.funct3 = funct3;
+
+	assign control_signals.valid = opcode inside {
+		'b0110011,	//  R_TYPE
+		'b0010011,	//  I_TYPE_ALU
+		'b0000011,	//  I_TYPE_LOAD
+		'b1100111,	//  I_TYPE_JALR
+		'b1100011,	//  B_TYPE
+		'b0100011,	//  S_TYPE
+		'b1101111,	//  JAL
+		'b0110111,	//  LUI
+		'b0010111	//  AUIPC
+	};
+	assign control_signals.fold = 0;	// not folding instructions for now
 
 	// only supporting RV32I instruction set rn, so this can be hardwired
 	// to 1
@@ -287,7 +344,9 @@ module instruction_decode #(parameter XLEN=32) (
 		.instruction_type(control_signals.instruction_type),
 		.alloc_rob_entry(control_signals.alloc_rob_entry),
 		.alloc_ldq_entry(control_signals.alloc_ldq_entry),
-		.alloc_stq_entry(control_signals.alloc_stq_entry)
+		.alloc_stq_entry(control_signals.alloc_stq_entry),
+		.op1_src(control_signals.op1_src),
+		.op2_src(control_signals.op2_src)
 	);
 
 	logic lui;

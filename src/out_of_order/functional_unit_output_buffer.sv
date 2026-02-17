@@ -26,11 +26,14 @@ module functional_unit_output_buffer #(parameter XLEN=32, parameter ROB_SIZE, pa
 
 	output logic not_empty,	// signals to the data bus arbiter that this buffer needs
 				// to write to the data_bus.  simply valid[read_from]
-	output logic full	// could use this to give priority to allowing this buffer to broadcast
+	output logic full,	// could use this to give priority to allowing this buffer to broadcast
 				// TODO: would also be cool to use this to
 				// stall the FU so that it holds the result if
 				// the buffer is full instead of it just
 				// disappearing
+
+	// debug signals
+	output logic [3:0]		valid
 	);
 
 	logic [3:0][XLEN-1:0]		values;
@@ -38,7 +41,7 @@ module functional_unit_output_buffer #(parameter XLEN=32, parameter ROB_SIZE, pa
 	logic [3:0]			uarch_exceptions;
 	logic [3:0]			arch_exceptions;
 	logic [3:0]			redirect_mispredicted_buf;
-	logic [3:0]			valid;
+	// logic [3:0]			valid;
 
 	logic [3:0]			rotated_valid;
 
@@ -98,7 +101,7 @@ module functional_unit_output_buffer #(parameter XLEN=32, parameter ROB_SIZE, pa
 				end: flush_entry
 				else if (write_en
 					&& write_select[i]
-					&& !(flush && ($signed(tag_in - flush_start_tag) < 0)))	// if the instruction is NOT being flushed this cycle
+					&& !(flush && !($signed(tag_in - flush_start_tag) < 0)))	// if the instruction is NOT being flushed this cycle
 				begin
 					values[i] <= value_in;
 					tags[i] <= tag_in;

@@ -14,6 +14,7 @@ module test_load_store_unit;
 	logic [ROB_TAG_WIDTH-1:0]	rob_tag_in;
 	logic [XLEN-1:0]		store_data;
 	logic				store_data_valid;
+	logic [ROB_TAG_WIDTH-1:0]	data_producer_rob_tag_in;
 	logic				agu_address_valid;
 	logic [XLEN-1:0]		agu_address_data;
 	logic [ROB_TAG_WIDTH-1:0]	agu_address_rob_tag;
@@ -55,6 +56,7 @@ module test_load_store_unit;
 	logic [STQ_SIZE-1:0]				stq_address_valid;
 	logic [STQ_SIZE-1:0] [XLEN-1:0]			stq_data;
 	logic [STQ_SIZE-1:0]				stq_data_valid;
+	logic [STQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]		stq_data_producer_rob_tag;
 	logic [STQ_SIZE-1:0]				stq_committed;
 	logic [STQ_SIZE-1:0]				stq_executed;
 	logic [STQ_SIZE-1:0]				stq_succeeded;
@@ -95,6 +97,7 @@ module test_load_store_unit;
 		.rob_tag_in(rob_tag_in),
 		.store_data(store_data),
 		.store_data_valid(store_data_valid),
+		.data_producer_rob_tag_in(data_producer_rob_tag_in),
 		.agu_address_valid(agu_address_valid),
 		.agu_address_data(agu_address_data),
 		.agu_address_rob_tag(agu_address_rob_tag),
@@ -134,6 +137,7 @@ module test_load_store_unit;
 		.stq_address_valid(stq_address_valid),
 		.stq_data(stq_data),
 		.stq_data_valid(stq_data_valid),
+		.stq_data_producer_rob_tag(stq_data_producer_rob_tag),
 		.stq_committed(stq_committed),
 		.stq_executed(stq_executed),
 		.stq_succeeded(stq_succeeded),
@@ -261,6 +265,9 @@ module test_load_store_unit;
 		cdb_tag = 2;
 		# 10
 		// the data should now be stored in the store queue
+		// TODO: this is failing because I changed the store queue to read a producer tag
+		// off the CDB, not its own tag.  This is the correct behavior, so the test needs to
+		// be updated to provide a producer ROB tag and provide that on the CDB.
 		assert(stq_data_valid == 'h0001);
 		assert(stq_data[0] == 'h89AB_CDEF);
 		assert(fire_memory_op == 0);

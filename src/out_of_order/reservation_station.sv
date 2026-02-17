@@ -1,12 +1,9 @@
-// TODO: need to use valid bits to determine when data is ready or if the tag
-// is valid (either, not both).  I designed this using tag=0 to indicate the
-// value is valid, but I realized that 0 is a valid index in the ROB.
 module reservation_station #(parameter XLEN=32, parameter ROB_TAG_WIDTH) (
 	input logic clk,
 	input logic reset,
 
-	input logic enable,
-	input logic dispatched_in,	// response from FU that instruction has begun execution
+	input logic			enable,
+	input logic			dispatched_in,	// response from FU that instruction has begun execution
 
 	// using terminology from Hennessy & Patterson book
 	// q = tag, v = value
@@ -34,50 +31,44 @@ module reservation_station #(parameter XLEN=32, parameter ROB_TAG_WIDTH) (
 	// In this implementation, the PC in the reservation station should be
 	// optimized away for all non-branch reservation stations since it
 	// won't be connected to anything
-	input logic [XLEN-1:0]		pc_in,
-	input logic [XLEN-1:0]		immediate_in,
-	input logic [XLEN-1:0]		predicted_next_instruction_in,
-	input logic			branch_prediction_in,
+	input logic [XLEN-1:0]			pc_in,
+	input logic [XLEN-1:0]			immediate_in,
+	input logic [XLEN-1:0]			predicted_next_instruction_in,
+	input logic				branch_prediction_in,
 
-	input logic			cdb_valid,
-	input wire [ROB_TAG_WIDTH-1:0]	cdb_rob_tag,
-	input wire [XLEN-1:0]		cdb_data,
+	input logic				cdb_valid,
+	input wire [ROB_TAG_WIDTH-1:0]		cdb_rob_tag,
+	input wire [XLEN-1:0]			cdb_data,
 
-	output logic [XLEN-1:0]		v1_out,
-	output logic [XLEN-1:0]		v2_out,
-	output control_signal_bus	control_signals_out,
+	output logic [XLEN-1:0]			v1_out,
+	output logic [XLEN-1:0]			v2_out,
+	output control_signal_bus		control_signals_out,
 	output logic [ROB_TAG_WIDTH-1:0]	rob_tag_out,
 
-	output logic [XLEN-1:0]		pc_out,
-	output logic [XLEN-1:0]		immediate_out,
-	output logic [XLEN-1:0]		predicted_next_instruction_out,
-	output logic			branch_prediction_out,
+	output logic [XLEN-1:0]			pc_out,
+	output logic [XLEN-1:0]			immediate_out,
+	output logic [XLEN-1:0]			predicted_next_instruction_out,
+	output logic				branch_prediction_out,
 
-	output logic			busy,
-	output logic			ready_to_execute
+	output logic				busy,
+	output logic				ready_to_execute,
+
+	// debug outputs
+	output logic				q1_valid,
+	output logic [ROB_TAG_WIDTH-1:0]	q1,
+	output logic				q2_valid,
+	output logic [ROB_TAG_WIDTH-1:0]	q2
 	);
 
-	logic				q1_valid;
-	logic [ROB_TAG_WIDTH-1:0]	q1;
-	logic				q2_valid;
-	logic [ROB_TAG_WIDTH-1:0]	q2;
+	// logic				q1_valid;
+	// logic [ROB_TAG_WIDTH-1:0]	q1;
+	// logic				q2_valid;
+	// logic [ROB_TAG_WIDTH-1:0]	q2;
 
 	logic dispatched;	// FF to track that the instruction has been accepted by the FU
 
 	// signals that determine whether we need to store the value on the
 	// cdb in v1 and/or v2
-	logic read_cdb_data_op1;
-	logic read_cdb_data_op2;
-
-	// if enable is set, we're gonna be reading the value on qN_in
-	// and see if that tag is on the CDB.  else, we're just comparing
-	// cdb_rob_tag against what's already in qN_out
-	assign read_cdb_data_op1 = (enable ? q1_valid_in : q1_valid)	// is the tag actually valid?
-		&& ((enable ? q1_in : q1) == cdb_rob_tag)			// does the tag match what is on the CDB?
-		&& cdb_valid;							// is the value on the CDB valid?
-	assign read_cdb_data_op2 = (enable ? q2_valid_in : q2_valid)	// same logic as above
-		&& ((enable ? q2_in : q2) == cdb_rob_tag)
-		&& cdb_valid;
 
 	assign ready_to_execute = busy && !dispatched && q1_valid == 0 && q2_valid == 0;
 
@@ -98,36 +89,53 @@ module reservation_station #(parameter XLEN=32, parameter ROB_TAG_WIDTH) (
 			busy <= 0;
 			dispatched <= 0;
 			pc_out <= 0;
+			immediate_out <= 0;
 			predicted_next_instruction_out <= 0;
 			branch_prediction_out <= 0;
 		end else begin
-			// store 0 if the tag matched the cdb tag, else store
-			// input if enable, else retain previous tag
-			q1_valid <= (read_cdb_data_op1) ? 1'b0 : (enable) ? q1_valid_in : q1_valid;
-			q1 <= (read_cdb_data_op1) ? 'b0 : (enable) ? q1_in : q1;
-			// store cdb data if the tag matches, else store input
-			// if enable, else retain previous data value
-			v1_out <= (read_cdb_data_op1) ? cdb_data : (enable) ? v1_in : v1_out;
-
-			// same logic as above for the second operand
-			q2_valid <= (read_cdb_data_op2) ? 1'b0 : (enable) ? q2_valid_in : q2_valid;
-			q2 <= (read_cdb_data_op2) ? 'b0 : (enable) ? q2_in : q2;
-			v2_out <= (read_cdb_data_op2) ? cdb_data : (enable) ? v2_in : v2_out;
-
 			// only update dispatched if it's clear, once it's set
 			// we don't want to clear it until the RS triggers
 			// a reset condition.
-			dispatched <= (!dispatched) ? dispatched_in : dispatched;
+			if (!dispatched)
+				dispatched <= dispatched_in;
 
 			// only update the rest of the signals if enable is set, meaning an
 			// instruction is being stored in the reservation stations
 			if (enable) begin
+				q1_valid <= q1_valid_in;
+				q1 <= q1_in;
+				v1_out <= v1_in;
+
+				q2_valid <= q2_valid_in;
+				q2 <= q2_in;
+				v2_out <= v2_in;
+
 				rob_tag_out <= rob_tag_in;
 				control_signals_out <= control_signals_in;
 				pc_out <= pc_in;
+				immediate_out <= immediate_in;
 				predicted_next_instruction_out <= predicted_next_instruction_in;
 				branch_prediction_out <= branch_prediction_in;
 				busy <= 1;	// busy because it has stored an instruction!
+				dispatched <= 0;
+			end
+
+			// it shouldn't matter that enable overwrites this, as enable never should
+			// be set when the RS has valid contents, but just noting that if enable is
+			// set, this is written to store the inputs and ignore whether the CDB
+			// matches the old values
+			else if (cdb_valid) begin
+				if (q1_valid && q1 == cdb_rob_tag) begin
+					q1_valid <= 1'b0;
+					q1 <= 'b0;
+					v1_out <= cdb_data;
+				end
+
+				if (q2_valid && q2 == cdb_rob_tag) begin
+					q2_valid <= 1'b0;
+					q2 <= 'b0;
+					v2_out <= cdb_data;
+				end
 			end
 		end
 	end

@@ -21,6 +21,9 @@ module load_store_unit #(
 	// store_data_valid determines if the data on store_data should
 	// be stored in the STQ 1 = use store_data, 0 = wait for it on CDB
 	input logic			store_data_valid,
+	// data_producer_rob_tag_in: ROB tag of the instruction that will produce the data to be
+	// written to memory, if store_data_in_valid is NOT set.
+	input logic [ROB_TAG_WIDTH-1:0]			data_producer_rob_tag_in,
 
 	input logic			agu_address_valid,
 	input logic [XLEN-1:0]		agu_address_data,
@@ -81,6 +84,7 @@ module load_store_unit #(
 	output logic [STQ_SIZE-1:0]			stq_address_valid,
 	output logic [STQ_SIZE-1:0][XLEN-1:0]		stq_data,
 	output logic [STQ_SIZE-1:0]			stq_data_valid,	// is the data for the store present in the entry?
+	output logic [STQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]	stq_data_producer_rob_tag,
 	output logic [STQ_SIZE-1:0]			stq_committed,
 	output logic [STQ_SIZE-1:0]			stq_executed,
 	output logic [STQ_SIZE-1:0]			stq_succeeded,
@@ -154,25 +158,26 @@ module load_store_unit #(
 	logic [LDQ_SIZE-1:0]				ldq_rotated_executed;
 
 	// store queue buffer signals
-	logic [STQ_SIZE-1:0] stq_valid;		// is the ENTRY valid
-	logic [STQ_SIZE-1:0] [XLEN-1:0] stq_address;
-	logic [STQ_SIZE-1:0] stq_address_valid;
-	logic [STQ_SIZE-1:0] [XLEN-1:0] stq_data;
-	logic [STQ_SIZE-1:0] stq_data_valid;	// is the data for the store present in the entry?
-	logic [STQ_SIZE-1:0] stq_committed;
-	logic [STQ_SIZE-1:0] stq_executed;
-	logic [STQ_SIZE-1:0] stq_succeeded;
-	logic [STQ_SIZE-1:0] [ROB_TAG_WIDTH-1:0] stq_rob_tag;
+	logic [STQ_SIZE-1:0]			stq_valid;		// is the ENTRY valid
+	logic [STQ_SIZE-1:0][XLEN-1:0]		stq_address;
+	logic [STQ_SIZE-1:0]			stq_address_valid;
+	logic [STQ_SIZE-1:0][XLEN-1:0]		stq_data;
+	logic [STQ_SIZE-1:0]			stq_data_valid;	// is the data for the store present in the entry?
+	logic [STQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]	stq_data_producer_rob_tag;
+	logic [STQ_SIZE-1:0]			stq_committed;
+	logic [STQ_SIZE-1:0]			stq_executed;
+	logic [STQ_SIZE-1:0]			stq_succeeded;
+	logic [STQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]	stq_rob_tag;
 
-	logic [STQ_SIZE-1:0] stq_rotated_valid;
-	logic [STQ_SIZE-1:0] stq_rotated_address_valid;
-	logic [STQ_SIZE-1:0] stq_rotated_data_valid;
-	logic [STQ_SIZE-1:0] stq_rotated_committed;
-	logic [STQ_SIZE-1:0] stq_rotated_executed;
-	logic [STQ_SIZE-1:0] stq_rotated_succeeded;
+	logic [STQ_SIZE-1:0]			stq_rotated_valid;
+	logic [STQ_SIZE-1:0]			stq_rotated_address_valid;
+	logic [STQ_SIZE-1:0]			stq_rotated_data_valid;
+	logic [STQ_SIZE-1:0]			stq_rotated_committed;
+	logic [STQ_SIZE-1:0]			stq_rotated_executed;
+	logic [STQ_SIZE-1:0]			stq_rotated_succeeded;
 
-	logic [LDQ_TAG_WIDTH-1:0] ldq_head;
-	logic [STQ_TAG_WIDTH-1:0] stq_head;
+	logic [LDQ_TAG_WIDTH-1:0]		ldq_head;
+	logic [STQ_TAG_WIDTH-1:0]		stq_head;
 
 	// load_fired - is a load being fired this clock cycle?
 	// produced by: lsu_control
@@ -296,6 +301,7 @@ module load_store_unit #(
 		.rob_tag_in(rob_tag_in),
 		.store_data_in(store_data),
 		.store_data_in_valid(store_data_valid),
+		.data_producer_rob_tag_in(data_producer_rob_tag_in),
 
 		.agu_address_valid(agu_address_valid),
 		.agu_address_data(agu_address_data),
@@ -323,6 +329,7 @@ module load_store_unit #(
 		.stq_address_valid(stq_address_valid),
 		.stq_data(stq_data),
 		.stq_data_valid(stq_data_valid),
+		.stq_data_producer_rob_tag(stq_data_producer_rob_tag),
 		.stq_committed(stq_committed),
 		.stq_executed(stq_executed),
 		.stq_succeeded(stq_succeeded),

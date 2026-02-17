@@ -27,11 +27,9 @@ module test_single_cycle;
 		#5 clk = ~clk;
 	end
 
-	integer i;
-
 	initial begin
 		// test logic
-		for (i = 0; i < 20; i = i + 1) begin
+		for (int i = 0; i < 20; i = i + 1) begin
 			#10
 			$display("i = %d", i);
 

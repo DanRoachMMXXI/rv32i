@@ -172,7 +172,7 @@ module instruction_route #(parameter XLEN=32, parameter N_ALU_RS, parameter N_AG
 endmodule
 
 module operand_route #(parameter XLEN=32, parameter ROB_SIZE, parameter ROB_TAG_WIDTH) (
-	input logic [6:0]	opcode,
+	input control_signal_bus		control_signals,
 
 	// inputs from register file
 	input logic [XLEN-1:0]			rs1,
@@ -187,7 +187,11 @@ module operand_route #(parameter XLEN=32, parameter ROB_SIZE, parameter ROB_TAG_
 
 	// input logic [ROB_SIZE-1:0]		rob_valid,
 	input logic [ROB_SIZE-1:0][XLEN-1:0]	rob_value,
-	input logic [ROB_SIZE-1:0]		rob_data_ready,
+	input logic [ROB_SIZE-1:0]		rob_ready,
+
+	input logic				cdb_valid,
+	input wire [XLEN-1:0]			cdb_data,
+	input wire [ROB_TAG_WIDTH-1:0]		cdb_rob_tag,
 
 	output logic				q1_valid,
 	output logic [ROB_TAG_WIDTH-1:0]	q1,
@@ -203,9 +207,8 @@ module operand_route #(parameter XLEN=32, parameter ROB_SIZE, parameter ROB_TAG_
 	assign rs1_rob_index = rs1_rob_tag[ROB_INDEX_WIDTH-1:0];
 	assign rs2_rob_index = rs2_rob_tag[ROB_INDEX_WIDTH-1:0];
 
-	// TODO: LUI and AUIPC are just going to be written stright to the ROB,
-	// so don't route them (more importantly, don't ISSUE them to
-	// a reservation station).
+	// LUI and AUIPC are just going to be written stright to the ROB, so they do not have
+	// operands routed and are not issued to an execution unit
 
 	// these are the values that will be routed if the value is retrieved
 	// from the register file or reorder buffer
@@ -219,92 +222,93 @@ module operand_route #(parameter XLEN=32, parameter ROB_SIZE, parameter ROB_TAG_
 
 	// we need to monitor the CDB for a tag if the register file has a tag
 	// and the ROB cannot yet forward the result
-	assign q1_valid_rs1 = rs1_rob_tag_valid && !rob_data_ready[rs1_rob_index];
+	assign q1_valid_rs1 = rs1_rob_tag_valid && !rob_ready[rs1_rob_index];
 
 	// if we need to use a tag, we simply also need to route the tag
 	assign q1_rs1 = q1_valid_rs1 ? rs1_rob_tag : 0;
 
 	// if we don't need to use a tag, we can just route the value
 	assign v1_rs1 = (!rs1_rob_tag_valid) ? rs1
-		: (rob_data_ready[rs1_rob_index]) ? rob_value[rs1_rob_index]
+		: (rob_ready[rs1_rob_index]) ? rob_value[rs1_rob_index]
 		: 0;
 
 	// same logic as rs1 above for forwarding/tagging rs2
-	assign q2_valid_rs2 = rs2_rob_tag_valid && !rob_data_ready[rs2_rob_index];
+	assign q2_valid_rs2 = rs2_rob_tag_valid && !rob_ready[rs2_rob_index];
 	assign q2_rs2 = q2_valid_rs2 ? rs2_rob_tag : 0;
 	assign v2_rs2 = (!rs2_rob_tag_valid) ? rs2
-		: (rob_data_ready[rs2_rob_index]) ? rob_value[rs2_rob_index]
+		: (rob_ready[rs2_rob_index]) ? rob_value[rs2_rob_index]
 		: 0;
 
 	// operand 1 routing
 	always_comb begin
-		unique case (opcode)
-			// For these instructions, the value of the program
-			// counter is used as the first operand.
-			'b1101111,	// JAL
-			'b0010111:	// AUIPC
+		unique casez (control_signals.op1_src)
+			// LUI or a nop
+			2'b00:
+			begin
+				q1_valid = 0;
+				q1 = 0;
+				v1 = 0;	// for LUI, this is the actual value
+			end
+
+			// JAL or AUIPC
+			2'b01:
 			begin
 				q1_valid = 0;
 				q1 = 0;
 				v1 = pc;
 			end
 
-
-			'b0110011,	// R_TYPE
-			'b0010011,	// I_TYPE_ALU
-			'b0000011,	// I_TYPE_LOAD
-			'b1100111,	// I_TYPE_JALR
-			'b1100011,	// B_TYPE
-			'b0100011:	// S_TYPE
+			// R_TYPE, I_TYPE, B_TYPE, S_TYPE
+			2'b1Z:
 			begin
 				q1_valid = q1_valid_rs1;
 				q1 = q1_rs1;
 				v1 = v1_rs1;
 			end
-
-			'b0110111,	// LUI
-			'b0000000:	// inserted stall, will not be routed to anything
-			begin
-				q1_valid = 0;
-				q1 = 0;
-				v1 = 0;	// for LUI, this is the actual value
-			end
 		endcase
 
+		// If operand 1 has a valid tag, and that tag is present on the CDB, forward the CDB
+		// value to the operand
+		if (cdb_valid && q1_valid && cdb_rob_tag == q1) begin
+			q1_valid = 0;
+			q1 = 0;
+			v1 = cdb_data;
+		end
 	end
 
 	always_comb begin
-		unique case (opcode)
-			// operand 2 comes from rs2 for these opcodes
-			'b0110011,	// R_TYPE
-			'b1100011:	// B_TYPE
+		unique casez (control_signals.op2_src)
+			2'b00:
 			begin
-				q2_valid = q2_valid_rs2;
-				q2 = q2_rs2;
-				v2 = v2_rs2;
+				q2_valid = 0;
+				q2 = 0;
+				v2 = 0;
 			end
 
-			// operand 2 comes from the immediate for these opcodes
-			'b0010011,	// I_TYPE_ALU
-			'b0000011,	// I_TYPE_LOAD
-			'b1100111,	// I_TYPE_JALR
-			'b0100011,	// S_TYPE
-			'b1101111,	// JAL
-			'b0110111,	// LUI
-			'b0010111:	// AUIPC
+			// I_TYPE, JAL, LUI, AUIPC
+			2'b01:
 			begin
 				q2_valid = 0;
 				q2 = 0;
 				v2 = immediate;
 			end
 
-			'b0000000:	// inserted stall, will not be routed to anything
+			// R_TYPE, B_TYPE, S_TYPE
+			2'b1Z:
 			begin
-				q2_valid = 0;
-				q2 = 0;
-				v2 = 0;
+				q2_valid = q2_valid_rs2;
+				q2 = q2_rs2;
+				v2 = v2_rs2;
 			end
 		endcase
+
+		// If operand 2 has a valid tag, and that tag is present on the CDB, forward the CDB
+		// value to the operand
+		if (cdb_valid && q2_valid && cdb_rob_tag == q2) begin
+			q2_valid = 0;
+			q2 = 0;
+			v2 = cdb_data;
+		end
 	end
 endmodule
 
@@ -313,7 +317,11 @@ endmodule
 // JALR
 // LUI
 // AUIPC
-// S_TYPE with data ready
+// This module no longer routes stores with ready data to the ROB because the store's data is stored
+// in the store_queue.  The store_queue uses q2_valid to evaluate the readiness of the data.  The
+// store is considered ready to commit when the ROB sees that entry's tag on the address bus, since
+// the store can't commit in-order until all dependent instructions have executed, thus having
+// broadcast their data to the CDB which the store_queue will receive it from.
 module rob_data_in_route #(parameter XLEN=32) (
 	input logic [1:0]	instruction_type,
 	// control signals from decode
@@ -322,32 +330,25 @@ module rob_data_in_route #(parameter XLEN=32) (
 	input logic		lui,
 	input logic		auipc,
 
-	input logic		rs2_rob_tag_valid,
-	input logic [XLEN-1:0]	rs2,
-
 	input logic [XLEN-1:0]	pc,
 	input logic		instruction_length,
 	input logic [XLEN-1:0]	immediate,
 
 	output logic [XLEN-1:0]	value,
-	output logic rob_data_ready_in
+	output logic rob_ready_in
 );
 
 	logic [XLEN-1:0]	next_pc;
 	assign next_pc = pc + (instruction_length ? XLEN'(4) : XLEN'(2));
 
-	logic store_with_data_ready;
-	assign store_with_data_ready = ((instruction_type == 2'b11) && !rs2_rob_tag_valid);
-
-	// TODO: analysis on whether this should just be decoded in decode
-	// stage
+	// TODO: analysis on whether this should just be decoded in decode stage
 	logic jal;
 	assign jal = (instruction_type == 2'b01 && !branch && !jalr);
 
-	// we DON'T want to set data_ready for JALR and branches, cause these
+	// we DON'T want to set ready for JALR and branches, cause these
 	// jumps still needs to execute - the data will be stored in the
 	// next_instruction field
-	assign rob_data_ready_in = jal || lui || auipc || store_with_data_ready;
+	assign rob_ready_in = jal || lui || auipc;
 
 	always_comb begin
 		if ((instruction_type == 2'b01) && !branch) begin	// JAL or JALR
@@ -356,8 +357,6 @@ module rob_data_in_route #(parameter XLEN=32) (
 			value = immediate;
 		end else if (auipc) begin
 			value = pc + immediate;
-		end else if (store_with_data_ready) begin
-			value = rs2;
 		end else begin
 			value = {XLEN{1'bX}};
 		end

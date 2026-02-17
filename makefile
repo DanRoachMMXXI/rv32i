@@ -57,6 +57,11 @@ matrix four-by-four-matrix:
 	$(OBJCOPY) test/programs/four-by-four-matrix/four-by-four-matrix.elf test/programs/four-by-four-matrix/four-by-four-matrix.vh
 	$(OBJDUMP) test/programs/four-by-four-matrix/four-by-four-matrix.elf
 
+qs qsort quicksort:
+	$(GCC) test/programs/quicksort/quicksort.c -o test/programs/quicksort/quicksort.elf
+	$(OBJCOPY) test/programs/quicksort/quicksort.elf test/programs/quicksort/quicksort.vh
+	$(OBJDUMP) test/programs/quicksort/quicksort.elf
+
 ALU_TEST_INCDIR = +incdir+./test/alu
 alu:
 	vlib work
@@ -231,6 +236,9 @@ test_ooo_rf:
 
 ooo_cpu ooocpu:
 	$(VERILATOR) --top-module cpu src/common/*.sv src/out_of_order/*.sv src/out_of_order/branch/*.sv src/out_of_order/lsu/*.sv
+
+testooo:
+	$(VERILATOR) --top-module test_ooo_cpu src/common/*.sv test/out_of_order/cpu.sv src/out_of_order/*.sv src/out_of_order/branch/*.sv src/out_of_order/lsu/*.sv
 
 clean:
 	rm -rf work transcript *.log *.wlf

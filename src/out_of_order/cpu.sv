@@ -1,51 +1,27 @@
 /*
  * TODO: figure out rs1 source for JALR target predictions
  * - when we pop off the RAS, we absolutely use that value
- * - when we aren't popping off the RAS, what do we use as a source?  I think
- *   there could be an argument for caching or forwarding LUI and AUIPC values
- *   from recent instructions (say the instruction just before the prediction)
- *   and using that when we see that rs1_index for the JALR is the same as the
- *   rd_index for the LUI or AUIPC.
- *   - I think this is a good cook
- *   - Talking with ChatGPT, it recommends "folding" the two instructions, not
- *   necessarily caching or forwarding.  Front end logic is specifically
- *   looking for an AUIPC/LUI followed by a JALR with a matching source
- *   register.  If the JALR rd overwrites the AUIPC/LUI rd, then the AUIPC/LUI
- *   does not need to be written to the ROB/RF, as the architectural state
- *   change is not visible.  This seems to be folding.
- *     - Supposedly "folding" is a term used for front-end optimization
- *     without computing the value in execution, and forwarding is using the
- *     computed value from execution before it writes back.  Since this is
- *     a front-end optimization, we call it folding.
- * - when neither of the above cases are viable, we use a branch target buffer
- *   or an indirect target predictor
+ * - when we identify JALR folding, we probably more absolutely use that value
+ * - when neither of the above cases are viable, we use a branch target buffer or an indirect target
+ *   predictor
  *   - this is a PC indexed data structure
- * - of note: ChatGPT mentions using the BTB/ITP for branches as well, as it
- *   saves us the one or more cycles it takes to decode the instruction where
- *   we identify it's a branch and construct the immediate value, add the
- *   immediate to PC, compute our branch prediction and update PC.  all these
- *   cycles are unavoidable stalls (unless we just load PC+4 in the meantime),
- *   but the BTB/ITP should provide greater accuracy
- *   - this is an optimization for WAY later tho, once the out-of-order design
- *   is proven to be working without it.
+ * - of note: ChatGPT mentions using the BTB/ITP for branches as well, as it saves us the one or
+	 *   more cycles it takes to decode the instruction where we identify it's a branch and
+	 *   construct the immediate value, add the immediate to PC, compute our branch prediction
+	 *   and update PC.  all these cycles are unavoidable stalls (unless we just load PC+4 in
+	 *   the meantime), but the BTB/ITP should provide greater accuracy
+ *   - this is an optimization for WAY later tho, once the out-of-order design is proven to be
+ *   working without it.
  *
- * TODO: take validation one stage at a time
- * first validate instruction decode
- * then validate instruction decode => RF/Route
- * then validate decode => route => reservation station
- *
- * TODO: I think stalls should be implemented as disabling the "enable" inputs
- * of synchronous elements in the front-end.  This way, it guarantees nothing
- * is updated (including RAS, BTB, etc) when an instruction is stalled and
- * thus not yet committing its state change to the next stage in the pipeline.
- * I think I prefer this instead of effectively "re-routing" the stalled
- * instruction back into that synchronous element (i.e. the pc).
- * An important part of this todo is analyzing all the possible sources that
- * an instruction stall can from.  Is it JUST from the instruction routing?
+ * TODO: I think stalls should be implemented as disabling the "enable" inputs of synchronous
+ * elements in the front-end.  This way, it guarantees nothing is updated (including RAS, BTB, etc)
+ * when an instruction is stalled and thus not yet committing its state change to the next stage in
+ * the pipeline. I think I prefer this instead of effectively "re-routing" the stalled instruction
+ * back into that synchronous element (i.e. the pc). An important part of this todo is analyzing all
+ * the possible sources that an instruction stall can from.  Is it JUST from the instruction routing?
  * Or can other things stall the front-end?
  *
- * TODO: on flush, clear RF tags and tag_valid for instructions not older than
- * flush_start_tag
+ * TODO: set up the LSU to broadcast forwarded loads to the CDB
  */
 module cpu #(
 	parameter XLEN=32,
@@ -55,7 +31,185 @@ module cpu #(
 	parameter RAS_SIZE=8,
 	parameter N_ALU_RS=3,
 	parameter N_AGU_RS=2,
-	parameter N_BRANCH_RS=1) (
+	parameter N_BRANCH_RS=1,
+	parameter PROGRAM="") (
+	input logic	clk,
+	input logic	reset,
+
+	input logic			LSU_load_succeeded,
+	input logic [ROB_TAG_WIDTH-1:0]	LSU_load_succeeded_rob_tag,
+	input logic			LSU_store_succeeded,
+	input logic [ROB_TAG_WIDTH-1:0]	LSU_store_succeeded_rob_tag,
+
+	// Instruction Fetch stage
+	output logic [XLEN-1:0]	pc,
+	output logic [XLEN-1:0]	pc_next,
+	output logic [XLEN-1:0]	IF_instruction,
+
+	// Instruction Decode - instruction decode
+	output logic [XLEN-1:0]	ID_pc,
+	output logic [XLEN-1:0]	ID_pc_next,	// pc+2 if compressed, pc+4 if uncompressed
+	output logic [XLEN-1:0]	ID_instruction,
+	output logic [XLEN-1:0]	ID_immediate,
+	control_signal_bus	ID_control_signals,
+
+	// Instruction Decode - RAS control signals
+	output logic			ras_push,
+	output logic			ras_pop,
+	output logic			ras_checkpoint,
+	output logic			ras_restore_checkpoint,
+
+	// Instruction Decode - RAS
+	output logic [XLEN-1:0]	ras_address_out,
+	output logic			ras_empty,
+	output logic			ras_full,
+
+	// Instruction Decode - branch prediction
+	output logic [XLEN-1:0]	ID_branch_target,
+	output logic			ID_branch_prediction,	// 1 if taken, 0 if not taken
+
+	// RF/Route - instruction decode signals
+	output logic [XLEN-1:0]	IR_pc,
+	output logic [XLEN-1:0]	IR_immediate,
+	control_signal_bus	IR_control_signals,
+	// IR_stall: did we have to stall the instruction due to being unable to route it?
+	output logic		IR_stall,
+
+	output logic		IR_branch_prediction,
+	output logic [XLEN-1:0]	IR_predicted_next_instruction,
+
+	// register file read outputs
+	output logic [XLEN-1:0]			RF_rs1,
+	output logic [ROB_TAG_WIDTH-1:0]	RF_rs1_rob_tag,
+	output logic				RF_rs1_rob_tag_valid,
+	output logic [XLEN-1:0]			RF_rs2,
+	output logic [ROB_TAG_WIDTH-1:0]	RF_rs2_rob_tag,
+	output logic				RF_rs2_rob_tag_valid,
+
+	output logic				RF_write_en,
+
+	// routed operands
+	output logic				IR_q1_valid,
+	output logic [ROB_TAG_WIDTH-1:0]	IR_q1,
+	output logic [XLEN-1:0]			IR_v1,
+	output logic				IR_q2_valid,
+	output logic [ROB_TAG_WIDTH-1:0]	IR_q2,
+	output logic [XLEN-1:0]			IR_v2,
+
+	output logic	IR_alloc_rob_entry,
+	output logic	IR_alloc_ldq_entry,
+	output logic	IR_alloc_stq_entry,
+
+	// reservation station inputs
+	output logic [TOTAL_RS-1:0]	RS_reset,
+	output logic [TOTAL_RS-1:0]	RS_route,
+	output logic [TOTAL_RS-1:0]	RS_dispatched,
+
+	// reservation station outputs
+	output logic [TOTAL_RS-1:0][XLEN-1:0]		RS_v1,
+	output logic [TOTAL_RS-1:0][XLEN-1:0]		RS_v2,
+	output logic [TOTAL_RS-1:0][XLEN-1:0]		RS_immediate,
+	output logic [TOTAL_RS-1:0][ROB_TAG_WIDTH-1:0]	RS_rob_tag,
+	output logic [TOTAL_RS-1:0]			RS_busy,
+	output logic [TOTAL_RS-1:0]			RS_ready_to_execute,
+	control_signal_bus [TOTAL_RS-1:0]		RS_control_signals,
+
+	// branch-specific RS signals
+	output logic [BRANCH_RS_END_INDEX:BRANCH_RS_START_INDEX][XLEN-1:0]	RS_pc,
+	output logic [BRANCH_RS_END_INDEX:BRANCH_RS_START_INDEX][XLEN-1:0]	RS_predicted_next_instruction,
+	output logic [BRANCH_RS_END_INDEX:BRANCH_RS_START_INDEX]		RS_branch_prediction,
+
+	// functional unit outputs
+	output logic [TOTAL_RS-1:0][XLEN-1:0]				FU_result,
+	output logic [TOTAL_RS-1:0][ROB_TAG_WIDTH-1:0]			FU_rob_tag,
+	output logic [TOTAL_RS-1:0]					FU_uarch_exception,
+	output logic [TOTAL_RS-1:0]					FU_arch_exception,
+	output logic [BRANCH_RS_END_INDEX:BRANCH_RS_START_INDEX]	FU_redirect_mispredicted,
+	output logic [TOTAL_RS-1:0]					FU_write_to_buffer,
+	output logic [TOTAL_RS-1:0]					FU_buf_not_empty,	// aka data_bus_request
+
+	// common data bus
+	output logic				cdb_valid,
+	output wire [XLEN-1:0]			cdb_data,
+	output wire [ROB_TAG_WIDTH-1:0]		cdb_rob_tag,
+	output wire				cdb_uarch_exception,
+	output wire				cdb_arch_exception,
+	output wire				cdb_mispredicted,
+
+	// CDB arbitration
+	output logic [TOTAL_RS-1:0]		cdb_permit,
+
+	// memory address bus + arbitration
+	output logic						address_bus_valid,
+	wire [XLEN-1:0]						address_bus_data,
+	wire [ROB_TAG_WIDTH-1:0]				address_bus_tag, 
+	output logic [AGU_RS_END_INDEX:AGU_RS_START_INDEX]	AGU_FU_buf_not_empty,
+	output logic [AGU_RS_END_INDEX:AGU_RS_START_INDEX]	address_bus_permit,
+
+	// ROB inputs
+	output logic [XLEN-1:0]			rob_value_in,
+	output logic				rob_ready_in,
+
+	// ROB
+	output logic [ROB_SIZE-1:0]		rob_valid,
+	output logic [ROB_SIZE-1:0][1:0]	rob_instruction_type,
+	output logic [ROB_SIZE-1:0][4:0]	rob_destination,
+	output logic [ROB_SIZE-1:0][XLEN-1:0]	rob_value,
+	output logic [ROB_SIZE-1:0]		rob_ready,
+	output logic [ROB_SIZE-1:0]		rob_branch_mispredict,
+	output logic [ROB_SIZE-1:0]		rob_uarch_exception,
+	output logic [ROB_SIZE-1:0]		rob_arch_exception,
+	output logic [ROB_SIZE-1:0][XLEN-1:0]	rob_next_instruction,
+	output logic [ROB_SIZE-1:0][LDQ_TAG_WIDTH-1:0] rob_ldq_tail,
+	output logic [ROB_SIZE-1:0][STQ_TAG_WIDTH-1:0] rob_stq_tail,
+
+	// the instruction committing
+	output logic				rob_commit_valid,
+	output logic [1:0]			rob_commit_instruction_type,
+	output logic [4:0]			rob_commit_destination,
+	output logic [XLEN-1:0]			rob_commit_value,
+	output logic				rob_commit_ready,
+	output logic				rob_commit_branch_mispredict,
+	output logic				rob_commit_uarch_exception,
+	output logic				rob_commit_arch_exception,
+	output logic [XLEN-1:0]			rob_commit_next_instruction,
+	output logic [LDQ_TAG_WIDTH-1:0]	rob_commit_ldq_tail,
+	output logic [STQ_TAG_WIDTH-1:0]	rob_commit_stq_tail,
+
+	output logic [ROB_TAG_WIDTH-1:0]	rob_head,
+	output logic [ROB_TAG_WIDTH-1:0]	rob_tail,
+	output logic				rob_empty,
+	output logic				rob_full,
+	output logic				rob_commit,
+
+	// exception handling / flushing
+	output logic				flush,
+	output logic [XLEN-1:0]			exception_next_instruction,
+	output logic [ROB_TAG_WIDTH-1:0]	flush_start_tag,
+	output logic [LDQ_TAG_WIDTH-1:0]	ldq_new_tail,
+	output logic [STQ_TAG_WIDTH-1:0]	stq_new_tail,
+
+	// LDQ
+	output logic				ldq_full,
+	output logic [LDQ_TAG_WIDTH-1:0]	ldq_tail,
+
+	// STQ
+	output logic				stq_full,
+	output logic [STQ_TAG_WIDTH-1:0]	stq_tail,
+
+	// MEMORY
+	output logic		MEM_kill_mem_req,
+	output logic		MEM_fire_memory_op,
+	output logic		MEM_memory_op_type,
+	output logic [XLEN-1:0]	MEM_memory_address,
+	output logic [XLEN-1:0]	MEM_memory_data,
+
+	// debug signals
+	output logic [TOTAL_RS-1:0]			RS_q1_valid,
+	output logic [TOTAL_RS-1:0][ROB_TAG_WIDTH-1:0]	RS_q1,
+	output logic [TOTAL_RS-1:0]			RS_q2_valid,
+	output logic [TOTAL_RS-1:0][ROB_TAG_WIDTH-1:0]	RS_q2,
+	output logic [TOTAL_RS-1:0][3:0]		FU_buf_valid
 );
 
 	localparam ROB_TAG_WIDTH = $clog2(ROB_SIZE) + 2;
@@ -81,176 +235,50 @@ module cpu #(
 	localparam AGU_RS_START_INDEX = ALU_RS_START_INDEX + N_ALU_RS;
 	localparam AGU_RS_END_INDEX = AGU_RS_START_INDEX + N_AGU_RS - 1;
 
-	logic	clk;
-	logic	reset;
-
-	// Instruction Fetch stage
-	logic [XLEN-1:0]	pc;
-	logic [XLEN-1:0]	pc_next;
-
-	// Instruction Decode - instruction decode
-	logic [XLEN-1:0]	ID_pc;
-	logic [XLEN-1:0]	ID_instruction;
-	logic [XLEN-1:0]	ID_immediate;
-	control_signal_bus	ID_control_signals;
-
-	// Instruction Decode - RAS control signals
-	logic			ras_push;
-	logic			ras_pop;
-	logic			ras_checkpoint;
-	logic			ras_restore_checkpoint;
-
-	// Instruction Decode - RAS
-	logic [XLEN-1:0]	ras_address_out;
-	logic			ras_empty;
-	logic			ras_full;
-
-	// Instruction Decode - branch prediction
-	logic [XLEN-1:0]	ID_branch_target;
-	logic			ID_branch_prediction;	// 1 if taken, 0 if not taken
-
-	// RF/Route - instruction decode signals
-	logic [XLEN-1:0]	IR_pc;
-	logic [XLEN-1:0]	IR_immediate;
-	control_signal_bus	IR_control_signals;
-	// IR_stall: did we have to stall the instruction due to being unable to route it?
-	logic			IR_stall;
-
-	logic [XLEN-1:0]	IR_predicted_next_instruction;
-	logic			IR_branch_prediction;
-
-	// register file read outputs
-	logic [XLEN-1:0]		RF_rs1;
-	logic [ROB_TAG_WIDTH-1:0]	RF_rs1_rob_tag;
-	logic				RF_rs1_rob_tag_valid;
-	logic [XLEN-1:0]		RF_rs2;
-	logic [ROB_TAG_WIDTH-1:0]	RF_rs2_rob_tag;
-	logic				RF_rs2_rob_tag_valid;
-
-	// routed operands
-	logic				IR_q1_valid;
-	logic [ROB_TAG_WIDTH-1:0]	IR_q1;
-	logic [XLEN-1:0]		IR_v1;
-	logic				IR_q2_valid;
-	logic [ROB_TAG_WIDTH-1:0]	IR_q2;
-	logic [XLEN-1:0]		IR_v2;
-
-	logic	IR_alloc_rob_entry;
-	logic	IR_alloc_ldq_entry;
-	logic	IR_alloc_stq_entry;
-
-	// reservation station inputs
-	logic [TOTAL_RS-1:0]	RS_reset;
-	logic [TOTAL_RS-1:0]	RS_route;
-	logic [TOTAL_RS-1:0]	RS_dispatched;
-
-	// reservation station outputs
-	logic [TOTAL_RS-1:0][XLEN-1:0]		RS_v1;
-	logic [TOTAL_RS-1:0][XLEN-1:0]		RS_v2;
-	logic [TOTAL_RS-1:0][ROB_TAG_WIDTH-1:0]	RS_rob_tag;
-	logic [TOTAL_RS-1:0]			RS_busy;
-	logic [TOTAL_RS-1:0]			RS_ready_to_execute;
-	control_signal_bus [TOTAL_RS-1:0]	RS_control_signals;
-
-	// branch-specific RS signals
-	logic [BRANCH_RS_END_INDEX:BRANCH_RS_START_INDEX][XLEN-1:0]	RS_pc;
-	logic [BRANCH_RS_END_INDEX:BRANCH_RS_START_INDEX][XLEN-1:0]	RS_immediate;
-	logic [BRANCH_RS_END_INDEX:BRANCH_RS_START_INDEX][XLEN-1:0]	RS_predicted_next_instruction;
-	logic [BRANCH_RS_END_INDEX:BRANCH_RS_START_INDEX]		RS_branch_prediction;
-
-	// functional unit outputs
-	logic [TOTAL_RS-1:0][XLEN-1:0]				FU_result;
-	logic [TOTAL_RS-1:0][ROB_TAG_WIDTH-1:0]			FU_rob_tag;
-	logic [TOTAL_RS-1:0]					FU_uarch_exception;
-	logic [TOTAL_RS-1:0]					FU_arch_exception;
-	logic [BRANCH_RS_END_INDEX:BRANCH_RS_START_INDEX]	FU_redirect_mispredicted;
-	logic [TOTAL_RS-1:0]					FU_write_to_buffer;
-	logic [TOTAL_RS-1:0]					FU_buf_not_empty;	// aka data_bus_request
-
-	// common data bus
-	logic				cdb_valid;
-	wire [XLEN-1:0]			cdb_data;
-	wire [ROB_TAG_WIDTH-1:0]	cdb_rob_tag;
-	wire				cdb_uarch_exception;
-	wire				cdb_arch_exception;
-	wire				cdb_mispredicted;
-
-	// CDB arbitration
-	logic [TOTAL_RS-1:0]		cdb_permit;
-
-	// memory address bus + arbitration
-	logic						address_bus_valid;
-	wire [XLEN-1:0]					address_bus_data;
-	wire [ROB_TAG_WIDTH-1:0]			address_bus_tag; 
-	logic [AGU_RS_END_INDEX:AGU_RS_START_INDEX]	AGU_FU_buf_not_empty;
-	logic [AGU_RS_END_INDEX:AGU_RS_START_INDEX]	address_bus_permit;
-
-	// ROB inputs
-	logic [XLEN-1:0]		rob_value_in;
-	logic				rob_data_ready_in;
-
-	// ROB
-	logic [ROB_SIZE-1:0]		rob_valid;
-	logic [ROB_SIZE-1:0][1:0]	rob_instruction_type;
-	logic [ROB_SIZE-1:0]		rob_address_valid;
-	logic [ROB_SIZE-1:0][4:0]	rob_destination;
-	logic [ROB_SIZE-1:0][XLEN-1:0]	rob_value;
-	logic [ROB_SIZE-1:0]		rob_data_ready;
-	logic [ROB_SIZE-1:0]		rob_branch_mispredict;
-	logic [ROB_SIZE-1:0]		rob_uarch_exception;
-	logic [ROB_SIZE-1:0]		rob_arch_exception;
-	logic [ROB_SIZE-1:0][XLEN-1:0]	rob_next_instruction;
-	logic [ROB_SIZE-1:0][LDQ_TAG_WIDTH-1:0] rob_ldq_tail;
-	logic [ROB_SIZE-1:0][STQ_TAG_WIDTH-1:0] rob_stq_tail;
-
-	// the instruction committing
-	logic				rob_commit_valid;
-	logic [1:0]			rob_commit_instruction_type;
-	logic				rob_commit_address_valid;
-	logic [4:0]			rob_commit_destination;
-	logic [XLEN-1:0]		rob_commit_value;
-	logic				rob_commit_data_ready;
-	logic				rob_commit_branch_mispredict;
-	logic				rob_commit_uarch_exception;
-	logic				rob_commit_arch_exception;
-	logic [XLEN-1:0]		rob_commit_next_instruction;
-	logic [LDQ_TAG_WIDTH-1:0]	rob_commit_ldq_tail;
-	logic [STQ_TAG_WIDTH-1:0]	rob_commit_stq_tail;
-
-	logic [ROB_TAG_WIDTH-1:0]	rob_head;
-	logic [ROB_TAG_WIDTH-1:0]	rob_tail;
-	logic				rob_empty;
-	logic				rob_full;
-	logic				rob_commit;
-
-	// exception handling / flushing
-	logic				flush;
-	logic [XLEN-1:0]		exception_next_instruction;
-	logic [ROB_TAG_WIDTH-1:0]	flush_start_tag;
-	logic [LDQ_TAG_WIDTH-1:0]	ldq_new_tail;
-	logic [STQ_TAG_WIDTH-1:0]	stq_new_tail;
-
-	// LDQ
-	logic ldq_full;
-	logic [LDQ_TAG_WIDTH-1:0]	ldq_tail;
-
-	// STQ
-	logic stq_full;
-	logic [STQ_TAG_WIDTH-1:0]	stq_tail;
-
-	// MEMORY
-	logic			MEM_kill_mem_req;
-	logic			MEM_fire_memory_op;
-	logic			MEM_memory_op_type;
-	logic [XLEN-1:0]	MEM_memory_address;
-	logic [XLEN-1:0]	MEM_memory_data;
-
 	always_ff @(posedge clk) begin: pc_reg
 		if (!reset)
 			pc <= 0;
 		else if (!IR_stall)
 			pc <= pc_next;
 	end
+
+	always_ff @(posedge clk) begin: IF_ID_pipeline_reg
+		if (!reset || flush) begin
+			ID_pc <= 0;
+			ID_instruction <= 0;
+		end else if (!IR_stall) begin
+			ID_pc <= pc;
+			ID_instruction <= IF_instruction;
+		end
+	end
+
+	assign ID_pc_next = ID_pc + (ID_control_signals.instruction_length ? XLEN'(4) : XLEN'(2));
+
+	always_ff @(posedge clk) begin: ID_IR_pipeline_reg
+		if (!reset || flush) begin
+			IR_pc <= 0;
+			IR_immediate <= 0;
+			IR_control_signals <= 0;
+			IR_branch_prediction <= 0;
+			IR_predicted_next_instruction <= 0;
+		end else if (!IR_stall) begin
+			IR_pc <= ID_pc;
+			IR_immediate <= ID_immediate;
+			IR_control_signals <= ID_control_signals;
+			IR_branch_prediction <= ID_branch_prediction;
+			IR_predicted_next_instruction <= ID_branch_prediction
+				? ID_branch_target
+				: ID_pc_next;
+		end
+	end
+
+	read_only_async_memory #(.MEM_SIZE(128), .MEM_FILE(PROGRAM)) instruction_memory (
+		.clk(clk),
+		.reset(reset),
+		.address(pc[$clog2(128)-1:0]),
+		.read_byte_en(4'b1111),	// always loading 32-bit instruction
+		.data_out(IF_instruction)
+	);
 
 	pc_mux #(.XLEN(XLEN)) pc_mux (
 		.pc(pc),
@@ -295,11 +323,12 @@ module cpu #(
 		.checkpoint(ras_checkpoint),
 		.restore_checkpoint(ras_restore_checkpoint)
 	);
+
 	return_address_stack #(.XLEN(XLEN), .STACK_SIZE(RAS_SIZE)) ras (
 		.clk(clk),
 		.reset(reset),
 
-		.address_in(),
+		.address_in(ID_pc_next),
 		.push(ras_push),
 		.pop(ras_pop),
 
@@ -334,8 +363,42 @@ module cpu #(
 		.branch_predicted_taken(ID_branch_prediction)
 	);
 
+	// perhaps it might be more elegant to have stores write to register 0,
+	// but for now, decode just sets rd_index to instruction[11:7] blindly,
+	// and that gets blindly put into the destination field for the ROB.
+	assign RF_write_en = rob_commit && rob_commit_instruction_type != 'b11;
+
+	register_file #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH)) register_file (
+		.clk(clk),
+		.reset(reset),
+
+		.rs1_index(IR_control_signals.rs1_index),
+		.rs2_index(IR_control_signals.rs2_index),
+
+		// don't update ROB tags for store instructions
+		// TODO: make this more elegant (no expressions in port connections)
+		.update_rob_tag_en(IR_alloc_rob_entry && !(IR_control_signals.instruction_type == 2'b11)),
+		.update_rob_tag_index(IR_control_signals.rd_index),
+		.rob_tail(rob_tail),
+
+		.flush(flush),
+		.flush_start_tag(flush_start_tag),
+
+		.rd_index(rob_commit_destination),
+		.rd(rob_commit_value),
+		.rd_rob_index(rob_head),
+		.write_en(RF_write_en),
+
+		.rs1(RF_rs1),
+		.rs1_rob_tag(RF_rs1_rob_tag),
+		.rs1_rob_tag_valid(RF_rs1_rob_tag_valid),
+		.rs2(RF_rs2),
+		.rs2_rob_tag(RF_rs2_rob_tag),
+		.rs2_rob_tag_valid(RF_rs2_rob_tag_valid)
+	);
+
 	instruction_route #(.XLEN(XLEN), .N_ALU_RS(N_ALU_RS), .N_AGU_RS(N_AGU_RS), .N_BRANCH_RS(N_BRANCH_RS)) instruction_route (
-		.valid(),	// TODO gotta figure this one out still
+		.valid(IR_control_signals.valid && !ID_control_signals.fold),
 		.instruction_type(IR_control_signals.instruction_type),
 		.ctl_branch(IR_control_signals.branch),
 		.ctl_jalr(IR_control_signals.jalr),
@@ -363,7 +426,7 @@ module cpu #(
 	);
 
 	operand_route #(.XLEN(XLEN), .ROB_SIZE(ROB_SIZE), .ROB_TAG_WIDTH(ROB_TAG_WIDTH)) operand_route (
-		.opcode(IR_control_signals.opcode),
+		.control_signals(IR_control_signals),
 		.rs1(RF_rs1),
 		.rs1_rob_tag(RF_rs1_rob_tag),
 		.rs1_rob_tag_valid(RF_rs1_rob_tag_valid),
@@ -373,7 +436,10 @@ module cpu #(
 		.pc(IR_pc),
 		.immediate(IR_immediate),
 		.rob_value(rob_value),
-		.rob_data_ready(rob_data_ready),
+		.rob_ready(rob_ready),
+		.cdb_valid(cdb_valid),
+		.cdb_data(cdb_data),
+		.cdb_rob_tag(cdb_rob_tag),
 		.q1_valid(IR_q1_valid),
 		.q1(IR_q1),
 		.v1(IR_v1),
@@ -388,13 +454,11 @@ module cpu #(
 		.jalr(IR_control_signals.jalr),
 		.lui(IR_control_signals.lui),
 		.auipc(IR_control_signals.auipc),
-		.rs2_rob_tag_valid(RF_rs2_rob_tag_valid),
-		.rs2(RF_rs2),
 		.pc(IR_pc),
 		.instruction_length(IR_control_signals.instruction_length),
 		.immediate(IR_immediate),
 		.value(rob_value_in),
-		.rob_data_ready_in(rob_data_ready_in)
+		.rob_ready_in(rob_ready_in)
 	);
 
 	// only the branch and alu FUs output to the CDB, but we should be
@@ -422,7 +486,7 @@ module cpu #(
 	);
 
 	cdb_arbiter #(.N(N_AGU_RS)) address_data_bus_arbiter (
-		.request(FU_buf_not_empty[AGU_RS_END_INDEX:AGU_RS_START_INDEX]),
+		.request(AGU_FU_buf_not_empty[AGU_RS_END_INDEX:AGU_RS_START_INDEX]),
 		.grant(address_bus_permit),
 		.cdb_valid(address_bus_valid)
 	);
@@ -468,7 +532,11 @@ module cpu #(
 				.branch_prediction_out(),
 
 				.busy(RS_busy[alu_genvar]),
-				.ready_to_execute(RS_ready_to_execute[alu_genvar])
+				.ready_to_execute(RS_ready_to_execute[alu_genvar]),
+				.q1_valid(RS_q1_valid[alu_genvar]),
+				.q1(RS_q1[alu_genvar]),
+				.q2_valid(RS_q2_valid[alu_genvar]),
+				.q2(RS_q2[alu_genvar])
 			);
 
 			reservation_station_reset #(.ROB_TAG_WIDTH(ROB_TAG_WIDTH)) rs_reset (
@@ -514,7 +582,8 @@ module cpu #(
 				.data_bus_arch_exception(cdb_arch_exception),
 				.data_bus_redirect_mispredicted(cdb_mispredicted),
 				.not_empty(FU_buf_not_empty[alu_genvar]),
-				.full()
+				.full(),
+				.valid(FU_buf_valid[alu_genvar])
 			);
 		end
 	endgenerate
@@ -533,33 +602,36 @@ module cpu #(
 				.q1_valid_in(IR_q1_valid),
 				.q1_in(IR_q1),
 				.v1_in(IR_v1),
-				.q2_valid_in(IR_q2_valid),
-				.q2_in(IR_q2),
-				.v2_in(IR_v2),
+				.q2_valid_in(1'b0),
+				.q2_in(ROB_TAG_WIDTH'(0)),
+				.v2_in(XLEN'(0)),
 				.control_signals_in(IR_control_signals),
 				.rob_tag_in(rob_tail),
 				// leave all branch specific fields to 0
 				.pc_in(XLEN'(0)),
-				.immediate_in(XLEN'(0)),
+				.immediate_in(IR_immediate),
 				.predicted_next_instruction_in(XLEN'(0)),
 				.branch_prediction_in(1'b0),
-				.cdb_valid(address_bus_valid),
-				.cdb_rob_tag(address_bus_tag),
-				.cdb_data(address_bus_data),
+				.cdb_valid(cdb_valid),
+				.cdb_rob_tag(cdb_rob_tag),
+				.cdb_data(cdb_data),
 				.v1_out(RS_v1[agu_genvar]),
-				.v2_out(RS_v2[agu_genvar]),
+				.v2_out(),
 				.control_signals_out(RS_control_signals[agu_genvar]),
 				.rob_tag_out(RS_rob_tag[agu_genvar]),
-				// leave all branch specific fields
-				// unconnected to anything so they're
+				// leave branch specific fields unconnected to anything so they're
 				// optimized out during synthesis
 				.pc_out(),
-				.immediate_out(),
+				.immediate_out(RS_immediate[agu_genvar]),
 				.predicted_next_instruction_out(),
 				.branch_prediction_out(),
 
 				.busy(RS_busy[agu_genvar]),
-				.ready_to_execute(RS_ready_to_execute[agu_genvar])
+				.ready_to_execute(RS_ready_to_execute[agu_genvar]),
+				.q1_valid(RS_q1_valid[agu_genvar]),
+				.q1(RS_q1[agu_genvar]),
+				.q2_valid(RS_q2_valid[agu_genvar]),
+				.q2(RS_q2[agu_genvar])
 			);
 
 			reservation_station_reset #(.ROB_TAG_WIDTH(ROB_TAG_WIDTH)) rs_reset (
@@ -572,7 +644,7 @@ module cpu #(
 
 			memory_address_functional_unit #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH)) memory_address_functional_unit (
 				.base(RS_v1[agu_genvar]),
-				.offset(RS_v2[agu_genvar]),
+				.offset(RS_immediate[agu_genvar]),
 				.rob_tag_in(RS_rob_tag[agu_genvar]),
 				.result(FU_result[agu_genvar]),
 				.rob_tag_out(FU_rob_tag[agu_genvar]),
@@ -602,7 +674,8 @@ module cpu #(
 				.data_bus_arch_exception(),
 				.data_bus_redirect_mispredicted(),
 				.not_empty(AGU_FU_buf_not_empty[agu_genvar]),
-				.full()
+				.full(),
+				.valid(FU_buf_valid[agu_genvar])
 			);
 		end
 	endgenerate
@@ -645,7 +718,11 @@ module cpu #(
 				.branch_prediction_out(RS_branch_prediction[branch_genvar]),
 
 				.busy(RS_busy[branch_genvar]),
-				.ready_to_execute(RS_ready_to_execute[branch_genvar])
+				.ready_to_execute(RS_ready_to_execute[branch_genvar]),
+				.q1_valid(RS_q1_valid[branch_genvar]),
+				.q1(RS_q1[branch_genvar]),
+				.q2_valid(RS_q2_valid[branch_genvar]),
+				.q2(RS_q2[branch_genvar])
 			);
 
 			reservation_station_reset #(.ROB_TAG_WIDTH(ROB_TAG_WIDTH)) rs_reset (
@@ -694,7 +771,8 @@ module cpu #(
 				.data_bus_arch_exception(cdb_arch_exception),
 				.data_bus_redirect_mispredicted(cdb_mispredicted),
 				.not_empty(FU_buf_not_empty[branch_genvar]),
-				.full()
+				.full(),
+				.valid(FU_buf_valid[branch_genvar])
 			);
 		end
 	endgenerate
@@ -706,7 +784,7 @@ module cpu #(
 		.instruction_type_in(IR_control_signals.instruction_type),
 		.destination_in(IR_control_signals.rd_index),
 		.value_in(rob_value_in),
-		.data_ready_in(rob_data_ready_in),
+		.ready_in(rob_ready_in),
 		.pc_in(IR_pc),
 		.ldq_tail_in(ldq_tail),
 		.stq_tail_in(stq_tail),
@@ -723,10 +801,9 @@ module cpu #(
 		.flush_start_tag(flush_start_tag),
 		.rob_valid(rob_valid),
 		.rob_instruction_type(rob_instruction_type),
-		.rob_address_valid(rob_address_valid),
 		.rob_destination(rob_destination),
 		.rob_value(rob_value),
-		.rob_data_ready(rob_data_ready),
+		.rob_ready(rob_ready),
 		.rob_branch_mispredict(rob_branch_mispredict),
 		.rob_uarch_exception(rob_uarch_exception),
 		.rob_arch_exception(rob_arch_exception),
@@ -735,10 +812,9 @@ module cpu #(
 		.rob_stq_tail(rob_stq_tail),
 		.rob_commit_valid(rob_commit_valid),
 		.rob_commit_instruction_type(rob_commit_instruction_type),
-		.rob_commit_address_valid(rob_commit_address_valid),
 		.rob_commit_destination(rob_commit_destination),
 		.rob_commit_value(rob_commit_value),
-		.rob_commit_data_ready(rob_commit_data_ready),
+		.rob_commit_ready(rob_commit_ready),
 		.rob_commit_branch_mispredict(rob_commit_branch_mispredict),
 		.rob_commit_uarch_exception(rob_commit_uarch_exception),
 		.rob_commit_arch_exception(rob_commit_arch_exception),
@@ -774,11 +850,9 @@ module cpu #(
 		.alloc_stq_entry(IR_alloc_stq_entry),
 		.rob_tag_in(rob_tail),
 
-		// TODO: I'm being lazy with these (it's a little late),
-		// verify this is fine: i.e. only does something when
-		// alloc_stq_entry is set
-		.store_data(rob_value_in),
-		.store_data_valid(rob_data_ready_in),
+		.store_data(IR_v2),
+		.store_data_valid(!IR_q2_valid),
+		.data_producer_rob_tag_in(IR_q2),
 		.agu_address_valid(address_bus_valid),
 		.agu_address_data(address_bus_data),
 		.agu_address_rob_tag(address_bus_tag),
@@ -791,10 +865,10 @@ module cpu #(
 		.stq_new_tail(stq_new_tail),
 
 		// these signals come from cache/memory
-		.load_succeeded(),
-		.load_succeeded_rob_tag(),
-		.store_succeeded(),
-		.store_succeeded_rob_tag(),
+		.load_succeeded(LSU_load_succeeded),
+		.load_succeeded_rob_tag(LSU_load_succeeded_rob_tag),
+		.store_succeeded(LSU_store_succeeded),
+		.store_succeeded_rob_tag(LSU_store_succeeded_rob_tag),
 
 		.cdb_active(cdb_valid),
 		.cdb_data(cdb_data),

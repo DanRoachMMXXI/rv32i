@@ -32,7 +32,7 @@ module reorder_buffer #(
 	// Stores also may have the value immediately ready, but need to have
 	// their address calculated and read from the AGU address bus.
 	input logic [XLEN-1:0]	value_in,
-	input logic		data_ready_in,
+	input logic		ready_in,
 	input logic [XLEN-1:0]	pc_in,
 	input logic [LDQ_TAG_WIDTH-1:0]	ldq_tail_in,
 	input logic [STQ_TAG_WIDTH-1:0]	stq_tail_in,
@@ -68,7 +68,6 @@ module reorder_buffer #(
 	// the buffer itself
 	output logic [ROB_SIZE-1:0]		rob_valid,
 	output logic [ROB_SIZE-1:0][1:0]	rob_instruction_type,
-	output logic [ROB_SIZE-1:0]		rob_address_valid,	// for stores only
 
 	// destination is either the register index of rd or the memory
 	// address that the value field will be written to.  whether it writes
@@ -81,10 +80,11 @@ module reorder_buffer #(
 	// value that appears on the CDB.
 	output logic [ROB_SIZE-1:0][XLEN-1:0]	rob_value,
 
-	// data_ready is set either when the entry is allocated if the data is
-	// already available (ex: LUI) or when the ROB tag appears on the
-	// active CDB.
-	output logic [ROB_SIZE-1:0]		rob_data_ready,
+	// ready is set at any of the folowing times:
+	// - when the entry is allocated if the data is already available (ex: LUI)
+	// - when the ROB tag appears on the active CDB for non-store instructions
+	// - when the ROB tag appears on the active address bus for store instructions
+	output logic [ROB_SIZE-1:0]		rob_ready,
 	output logic [ROB_SIZE-1:0]		rob_branch_mispredict,
 	output logic [ROB_SIZE-1:0]		rob_uarch_exception,
 	output logic [ROB_SIZE-1:0]		rob_arch_exception,
@@ -109,10 +109,9 @@ module reorder_buffer #(
 	// entirely separate module to do this
 	output logic				rob_commit_valid,
 	output logic [1:0]			rob_commit_instruction_type,
-	output logic				rob_commit_address_valid,
 	output logic [4:0]			rob_commit_destination,
 	output logic [XLEN-1:0]			rob_commit_value,
-	output logic				rob_commit_data_ready,
+	output logic				rob_commit_ready,
 	output logic				rob_commit_branch_mispredict,
 	output logic				rob_commit_uarch_exception,
 	output logic				rob_commit_arch_exception,
@@ -176,7 +175,7 @@ module reorder_buffer #(
 						rob_instruction_type[i] <= instruction_type_in;
 						rob_destination[i] <= destination_in;
 						rob_value[i] <= value_in;
-						rob_data_ready[i] <= data_ready_in;
+						rob_ready[i] <= ready_in;
 						rob_next_instruction[i] <= pc_in;
 						rob_ldq_tail[i] <= ldq_tail_in;
 						rob_stq_tail[i] <= stq_tail_in;
@@ -205,19 +204,20 @@ module reorder_buffer #(
 							rob_value[i] <= cdb_data;
 						end
 
-						rob_data_ready[i] <= 1;
+						rob_ready[i] <= 1;
 					end
 
 					// for stores, verify the memory address has been calculated and set
-					// address_valid, which will determine whether the instruction is ready to
-					// commit.  previously, this block updated the rob_destination entry, but
-					// I realized that the load is actually fired from the LSU, in which the store
-					// queue stores the address, so it's not needed in the ROB.
+					// ready, which will determine whether the instruction is ready to
+					// commit.  previously, this block updated the rob_destination entry,
+					// but I realized that the load is actually fired from the LSU, in
+					// which the store queue stores the address, so it's not needed in
+					// the ROB.
 					if (rob_valid[i]
 						&& agu_address_valid
 						&& rob_instruction_type[agu_address_rob_tag_index] == 2'b11
 						&& i[ROB_INDEX_WIDTH-1:0] == agu_address_rob_tag_index) begin
-						rob_address_valid[agu_address_rob_tag_index] <= 1;
+						rob_ready[agu_address_rob_tag_index] <= 1;
 					end
 
 					// instruction commit
@@ -230,20 +230,14 @@ module reorder_buffer #(
 		end
 	end
 
-	// if the instruction is a store, data_ready and address_valid both
-	// need to be set, else just data_ready
-	assign commit = !empty
-		&& rob_data_ready[head_index]
-		&& (rob_instruction_type[head_index] != 2'b11
-			|| rob_address_valid[head_index] == 1);
+	assign commit = !empty && rob_ready[head_index];
 
 	// values being committed if commit is set
 	assign rob_commit_valid = rob_valid[head_index];
 	assign rob_commit_instruction_type = rob_instruction_type[head_index];
-	assign rob_commit_address_valid = rob_address_valid[head_index];
 	assign rob_commit_destination = rob_destination[head_index];
 	assign rob_commit_value = rob_value[head_index];
-	assign rob_commit_data_ready = rob_data_ready[head_index];
+	assign rob_commit_ready = rob_ready[head_index];
 	assign rob_commit_branch_mispredict = rob_branch_mispredict[head_index];
 	assign rob_commit_uarch_exception = rob_uarch_exception[head_index];
 	assign rob_commit_arch_exception = rob_arch_exception[head_index];
@@ -254,10 +248,9 @@ module reorder_buffer #(
 	function void clear_entry(logic[ROB_INDEX_WIDTH-1:0] index);
 		rob_valid[index] <= 0;
 		rob_instruction_type[index] <= 0;
-		rob_address_valid[index] <= 0;
 		rob_destination[index] <= 0;
 		rob_value[index] <= 0;
-		rob_data_ready[index] <= 0;
+		rob_ready[index] <= 0;
 		rob_branch_mispredict[index] <= 0;
 		rob_uarch_exception[index] <= 0;
 		rob_arch_exception[index] <= 0;

@@ -39,7 +39,7 @@ module instruction_route #(parameter XLEN=32, parameter N_ALU_RS, parameter N_AG
 	input logic			ldq_full,
 	input logic			stq_full,
 
-	// TODO: ensure nothing is allocated or routed if flush is set
+	// nothing is allocated or routed if flush is set
 	input logic			flush,	// was this instruction misspeculated?
 
 	input logic [N_ALU_RS-1:0]	alu_rs_busy,
@@ -185,7 +185,6 @@ module operand_route #(parameter XLEN=32, parameter ROB_SIZE, parameter ROB_TAG_
 	input logic [XLEN-1:0]			pc,
 	input logic [XLEN-1:0]			immediate,
 
-	// input logic [ROB_SIZE-1:0]		rob_valid,
 	input logic [ROB_SIZE-1:0][XLEN-1:0]	rob_value,
 	input logic [ROB_SIZE-1:0]		rob_ready,
 

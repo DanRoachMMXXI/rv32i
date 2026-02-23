@@ -22,6 +22,8 @@
  * Or can other things stall the front-end?
  *
  * TODO: set up the LSU to broadcast forwarded loads to the CDB
+ *
+ * TODO: set up coverpoints throughout the design
  */
 module cpu #(
 	parameter XLEN=32,

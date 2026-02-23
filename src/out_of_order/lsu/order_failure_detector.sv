@@ -12,8 +12,6 @@
  *   data was forwarded from an older store. In either case, a memory ordering
  *   failure has occurred."
  */
-// TODO: change age_comparator to use the same age comparison algorithm as the
-// ROB age comparison
 module order_failure_detector #(parameter XLEN=32, parameter LDQ_SIZE, parameter STQ_SIZE, parameter STQ_TAG_WIDTH) (
 		input logic [LDQ_SIZE-1:0]				ldq_valid,
 		input logic [LDQ_SIZE-1:0][XLEN-1:0]			ldq_address,

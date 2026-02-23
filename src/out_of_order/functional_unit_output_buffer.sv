@@ -90,10 +90,7 @@ module functional_unit_output_buffer #(parameter XLEN=32, parameter ROB_SIZE, pa
 	always_ff @(posedge clk) begin
 		if (!reset) begin
 			last_broadcast_index <= 0;
-
-			for (int i = 0; i < 4; i = i + 1) begin
-				valid[i] <= 0;
-			end
+			valid <= 'b0;
 		end else begin
 			for (int i = 0; i < 4; i = i + 1) begin
 				if (flush && !($signed(tags[i] - flush_start_tag) < 0)) begin: flush_entry

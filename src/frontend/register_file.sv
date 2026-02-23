@@ -1,41 +1,22 @@
-module register_file
-	#(parameter XLEN=32, parameter ROB_TAG_WIDTH) (
+module register_file #(parameter XLEN=32) (
 	input logic clk,
 	input logic reset,
 
 	// indices for read
-	input logic [4:0]		rs1_index,
-	input logic [4:0]		rs2_index,
-
-	// fields to update tags when a ROB entry is allocated
-	input logic			update_rob_tag_en,	// TODO: THIS NEEDS TO NOT BE DONE FOR STORES
-	input logic [4:0]		update_rob_tag_index,	// this is the rd_index of the instruction being routed
-								// as of now, the instruction being routed is the same as
-								// the one for which rs1 and rs2 are being read
-	input logic [ROB_TAG_WIDTH-1:0]	rob_tail,
-
-	input logic			flush,
-	input logic [ROB_TAG_WIDTH-1:0]	flush_start_tag,
+	input logic [4:0]	rs1_index,
+	input logic [4:0]	rs2_index,
 
 	// fields for the write
-	input logic [4:0]		rd_index,
-	input logic [XLEN-1:0]		rd,
-	input logic [ROB_TAG_WIDTH-1:0]	rd_rob_index,	// the index of the ROB entry writing to rd
-	input logic			write_en,
+	input logic [4:0]	rd_index,
+	input logic [XLEN-1:0]	rd,
+	input logic		write_en,
 
 	// outputs for the reads
-	output logic [XLEN-1:0]			rs1,
-	output logic [ROB_TAG_WIDTH-1:0]	rs1_rob_tag,
-	output logic				rs1_rob_tag_valid,
-	output logic [XLEN-1:0]			rs2,
-	output logic [ROB_TAG_WIDTH-1:0]	rs2_rob_tag,
-	output logic				rs2_rob_tag_valid
+	output logic [XLEN-1:0]	rs1,
+	output logic [XLEN-1:0]	rs2
 );
 
-	reg [31:0][XLEN-1:0]		registers;
-	reg [31:0][ROB_TAG_WIDTH-1:0]	rob_tag;	// ROB tag of the youngest instruction that will write to this register
-							// this is the value that dependent instructions will need to forward from
-	reg [31:0]			rob_tag_valid;	// is the rob_tag valid?  need this bit since 0 is a valid tag.
+	reg [31:0][XLEN-1:0]	registers;
 
 	// registers
 	always_ff @(posedge clk) begin
@@ -49,7 +30,43 @@ module register_file
 		end
 	end
 
-	// ROB tag tracking
+	assign rs1 = registers[rs1_index];
+	assign rs2 = registers[rs2_index];
+endmodule
+
+module rf_rob_tag_table #(parameter ROB_TAG_WIDTH) (
+	input logic clk,
+	input logic reset,
+
+	// indices for read
+	input logic [4:0]		rs1_index,
+	input logic [4:0]		rs2_index,
+
+	// fields to update tags when a ROB entry is allocated
+	input logic			update_rob_tag_en,	// THIS NEEDS TO NOT BE DONE FOR STORES
+	input logic [4:0]		update_rob_tag_index,	// this is the rd_index of the instruction being routed
+								// as of now, the instruction being routed is the same as
+								// the one for which rs1 and rs2 are being read
+	input logic [ROB_TAG_WIDTH-1:0]	rob_tail,
+
+	input logic			flush,
+	input logic [ROB_TAG_WIDTH-1:0]	flush_start_tag,
+
+	// fields for the write
+	input logic [4:0]		rd_index,
+	input logic [ROB_TAG_WIDTH-1:0]	rd_rob_index,	// the index of the ROB entry writing to rd
+	input logic			write_en,
+
+	// outputs for the reads
+	output logic [ROB_TAG_WIDTH-1:0]	rs1_rob_tag,
+	output logic				rs1_rob_tag_valid,
+	output logic [ROB_TAG_WIDTH-1:0]	rs2_rob_tag,
+	output logic				rs2_rob_tag_valid
+);
+	reg [31:0][ROB_TAG_WIDTH-1:0]	rob_tag;	// ROB tag of the youngest instruction that will write to this register
+							// this is the value that dependent instructions will need to forward from
+	reg [31:0]			rob_tag_valid;	// is the rob_tag valid?  need this bit since 0 is a valid tag.
+
 	always_ff @(posedge clk) begin
 		// register 0 is hardwired to 0
 		rob_tag[0] <= 0;
@@ -82,11 +99,9 @@ module register_file
 		end
 	end
 	
-	assign rs1 = registers[rs1_index];
 	assign rs1_rob_tag = rob_tag[rs1_index];
 	assign rs1_rob_tag_valid = rob_tag_valid[rs1_index];
 
-	assign rs2 = registers[rs2_index];
 	assign rs2_rob_tag = rob_tag[rs2_index];
 	assign rs2_rob_tag_valid = rob_tag_valid[rs2_index];
 endmodule

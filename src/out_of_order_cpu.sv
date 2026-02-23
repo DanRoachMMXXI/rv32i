@@ -370,7 +370,22 @@ module cpu #(
 	// and that gets blindly put into the destination field for the ROB.
 	assign RF_write_en = rob_commit && rob_commit_instruction_type != 'b11;
 
-	register_file #(.XLEN(XLEN), .ROB_TAG_WIDTH(ROB_TAG_WIDTH)) register_file (
+	register_file #(.XLEN(XLEN)) register_file (
+		.clk(clk),
+		.reset(reset),
+
+		.rs1_index(IR_control_signals.rs1_index),
+		.rs2_index(IR_control_signals.rs2_index),
+
+		.rd_index(rob_commit_destination),
+		.rd(rob_commit_value),
+		.write_en(RF_write_en),
+
+		.rs1(RF_rs1),
+		.rs2(RF_rs2)
+	);
+
+	rf_rob_tag_table #(.ROB_TAG_WIDTH(ROB_TAG_WIDTH)) rf_rob_tag_table (
 		.clk(clk),
 		.reset(reset),
 
@@ -387,14 +402,11 @@ module cpu #(
 		.flush_start_tag(flush_start_tag),
 
 		.rd_index(rob_commit_destination),
-		.rd(rob_commit_value),
 		.rd_rob_index(rob_head),
 		.write_en(RF_write_en),
 
-		.rs1(RF_rs1),
 		.rs1_rob_tag(RF_rs1_rob_tag),
 		.rs1_rob_tag_valid(RF_rs1_rob_tag_valid),
-		.rs2(RF_rs2),
 		.rs2_rob_tag(RF_rs2_rob_tag),
 		.rs2_rob_tag_valid(RF_rs2_rob_tag_valid)
 	);

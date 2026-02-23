@@ -183,62 +183,62 @@ pcsel pc_select:
 
 reorder_buffer rob:
 	# $(VLOG) src/reorder_buffer.sv
-	$(VERILATOR) --top-module test_reorder_buffer test/out_of_order/reorder_buffer.sv test/out_of_order/instruction_type.sv src/out_of_order/reorder_buffer.sv src/common/lsb_priority_encoder.sv
+	$(VERILATOR) --top-module test_reorder_buffer test/backend/reorder_buffer.sv test/backend/instruction_type.sv src/backend/reorder_buffer.sv src/common/lsb_priority_encoder.sv
 
 fubuf:
-	$(VERILATOR) --top-module test_functional_unit_output_buffer src/out_of_order/functional_unit_output_buffer.sv test/out_of_order/functional_unit_output_buffer.sv src/common/fixed_priority_arbiter.sv src/common/lsb_priority_encoder.sv
+	$(VERILATOR) --top-module test_functional_unit_output_buffer src/backend/functional_unit_output_buffer.sv test/backend/functional_unit_output_buffer.sv src/common/fixed_priority_arbiter.sv src/common/lsb_priority_encoder.sv
 
 rs:
-	$(VERILATOR) --top-module test_reservation_station src/common/control_signal_bus.sv test/out_of_order/reservation_station.sv src/out_of_order/reservation_station.sv
+	$(VERILATOR) --top-module test_reservation_station src/common/control_signal_bus.sv test/backend/reservation_station.sv src/backend/reservation_station.sv
 
 full_fu:
-	$(VERILATOR) --top-module test_full_fu src/common/control_signal_bus.sv test/out_of_order/full_fu.sv src/common/alu.sv src/out_of_order/reservation_station.sv src/out_of_order/functional_unit_output_buffer.sv src/out_of_order/alu_functional_unit.sv
+	$(VERILATOR) --top-module test_full_fu src/frontend/control_signal_bus.sv test/out_of_order/full_fu.sv src/backend/alu/*.sv src/backend/reservation_station.sv src/backend/functional_unit_output_buffer.sv
 	./obj_dir/Vtest_full_fu
 
 cdb_arbiter:
-	$(VERILATOR) test/out_of_order/cdb_arbiter.sv src/out_of_order/cdb_arbiter.sv
+	$(VERILATOR) test/backend/cdb_arbiter.sv src/backend/cdb_arbiter.sv
 	./obj_dir/Vcdb_arbiter
 
 ldq load_queue:
-	$(VERILATOR) test/out_of_order/lsu/load_queue.sv src/out_of_order/lsu/load_queue.sv
+	$(VERILATOR) test/backend/lsu/load_queue.sv src/backend/lsu/load_queue.sv
 
 stq store_queue:
-	$(VERILATOR) test/out_of_order/lsu/store_queue.sv src/out_of_order/lsu/store_queue.sv
+	$(VERILATOR) test/backend/lsu/store_queue.sv src/backend/lsu/store_queue.sv
 
 yes youngest_entry_select:
-	$(VERILATOR) {test,src}/out_of_order/lsu/youngest_entry_select.sv
+	$(VERILATOR) {test,src}/backend/lsu/youngest_entry_select.sv
 
 lsdc load_store_dep_checker:
-	$(VERILATOR) test/out_of_order/lsu/load_store_dep_checker.sv src/out_of_order/lsu/youngest_entry_select.sv src/out_of_order/lsu/load_store_dep_checker.sv
+	$(VERILATOR) test/backend/lsu/load_store_dep_checker.sv src/backend/lsu/youngest_entry_select.sv src/backend/lsu/load_store_dep_checker.sv
 
 ofd order_failure_detector:
-	$(VERILATOR) test/out_of_order/lsu/order_failure_detector.sv src/out_of_order/lsu/age_comparator.sv src/out_of_order/lsu/order_failure_detector.sv
+	$(VERILATOR) test/backend/lsu/order_failure_detector.sv src/backend/lsu/order_failure_detector.sv
 
 searcher: load_store_dep_checker order_failure_detector
 
 lsu_control:
-	$(VERILATOR) test/out_of_order/lsu/lsu_control.sv src/out_of_order/lsu/lsu_control.sv src/common/lsb_priority_encoder.sv
+	$(VERILATOR) test/backend/lsu/lsu_control.sv src/backend/lsu/lsu_control.sv src/common/lsb_priority_encoder.sv
 
 lsu load_store_unit:
-	$(VERILATOR) +define+DEBUG test/out_of_order/lsu/load_store_unit.sv src/out_of_order/lsu/*.sv src/common/lsb_priority_encoder.sv
+	$(VERILATOR) +define+DEBUG test/backend/lsu/load_store_unit.sv src/backend/lsu/*.sv src/common/lsb_priority_encoder.sv
 
 instruction_route ir:
-	$(VERILATOR) --top-module test_instruction_route test/out_of_order/instruction_route.sv src/out_of_order/instruction_route.sv src/common/fixed_priority_arbiter.sv
+	$(VERILATOR) --top-module test_instruction_route test/frontend/instruction_route.sv src/frontend/instruction_route.sv src/common/fixed_priority_arbiter.sv
 
 full_branch_fu bfu:
 	$(VERILATOR) --top-module test_full_branch_fu src/common/*.sv test/out_of_order/branch/full_branch_fu.sv src/out_of_order/branch/*.sv src/out_of_order/instruction_route.sv src/out_of_order/cdb_arbiter.sv src/out_of_order/functional_unit_output_buffer.sv src/out_of_order/reorder_buffer.sv src/out_of_order/reservation_station.sv src/out_of_order/rf_writeback.sv src/out_of_order/pc_mux.sv
 
 return_address_stack ras:
-	$(VERILATOR) test/out_of_order/branch/return_address_stack.sv src/out_of_order/branch/return_address_stack.sv
+	$(VERILATOR) test/backend/branch/return_address_stack.sv src/out_of_order/branch/return_address_stack.sv
 
 test_ooo_rf:
 	$(VERILATOR) test/out_of_order/register_file_modifications.sv src/common/register_file.sv
 
 ooo_cpu ooocpu:
-	$(VERILATOR) --top-module cpu src/common/*.sv src/out_of_order/*.sv src/out_of_order/branch/*.sv src/out_of_order/lsu/*.sv
+	$(VERILATOR) --top-module cpu src/frontend/*.sv src/backend/*.sv src/backend/*/*.sv src/out_of_order_cpu.sv src/common/*.sv
 
 testooo:
-	$(VERILATOR) --top-module test_ooo_cpu src/common/*.sv test/out_of_order/cpu.sv src/out_of_order/*.sv src/out_of_order/branch/*.sv src/out_of_order/lsu/*.sv
+	$(VERILATOR) --top-module test_ooo_cpu src/frontend/*.sv test/out_of_order/cpu.sv src/backend/*.sv src/backend/*/*.sv src/out_of_order_cpu.sv src/common/*.sv
 
 clean:
 	rm -rf work transcript *.log *.wlf

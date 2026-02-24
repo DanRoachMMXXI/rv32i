@@ -1,3 +1,18 @@
+# branch\_evaluator
+- The `branch_evaluator` compares branch predictions to the result computed by the `alu`.  If the
+  prediction did not match the computed result, it sets the `branch_mispredicted` signal which is
+  used to route `next_instruction` to the PC.
+- This module is only used by the `single_cycle` and `six_stage_pipeline` microarchitectures.
+
+# branch\_predictor
+- The simplest prediction algorithm that allowed me to build out the other features of the
+  microarchitectures, and much more easily produce mispredicted branches.
+
+# branch\_target
+- Logic that just routes PC or rs1 to the address base and adds the immediate to it.  Indirect jumps
+  (JALR) add the encoded immediate to rs1, all other jumps and branches add the encoded immediate to
+  the PC of the instruction.
+
 # branch\_functional\_unit
 - Similar to the other functional units, the branch functional unit wraps the redirect logic around
   the interface between the reservation station and the CDB output buffer.

@@ -18,9 +18,9 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter STQ_S
 	input logic [XLEN-1:0]				store_data_in,
 	// store_data_in_valid: boolean to determine whether store_data_in is valid
 	input logic					store_data_in_valid,
-	// data_producer_rob_tag_in: ROB tag of the instruction that will produce the data to be
+	// store_data_producer_rob_tag_in: ROB tag of the instruction that will produce the data to be
 	// written to memory, if store_data_in_valid is NOT set.
-	input logic [ROB_TAG_WIDTH-1:0]			data_producer_rob_tag_in,
+	input logic [ROB_TAG_WIDTH-1:0]			store_data_producer_rob_tag_in,
 
 	input logic					agu_address_valid,
 	input logic [XLEN-1:0]				agu_address_data,
@@ -115,7 +115,7 @@ module store_queue #(parameter XLEN=32, parameter ROB_TAG_WIDTH, parameter STQ_S
 						// DO.
 						stq_data[i] <= store_data_in;
 						stq_data_valid[i] <= store_data_in_valid;
-						stq_data_producer_rob_tag[i] <= data_producer_rob_tag_in;
+						stq_data_producer_rob_tag[i] <= store_data_producer_rob_tag_in;
 
 						tail <= tail + 1;
 					end

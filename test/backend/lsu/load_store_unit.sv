@@ -14,7 +14,7 @@ module test_load_store_unit;
 	logic [ROB_TAG_WIDTH-1:0]	rob_tag_in;
 	logic [XLEN-1:0]		store_data;
 	logic				store_data_valid;
-	logic [ROB_TAG_WIDTH-1:0]	data_producer_rob_tag_in;
+	logic [ROB_TAG_WIDTH-1:0]	store_data_producer_rob_tag_in;
 	logic				agu_address_valid;
 	logic [XLEN-1:0]		agu_address_data;
 	logic [ROB_TAG_WIDTH-1:0]	agu_address_rob_tag;
@@ -97,7 +97,7 @@ module test_load_store_unit;
 		.rob_tag_in(rob_tag_in),
 		.store_data(store_data),
 		.store_data_valid(store_data_valid),
-		.data_producer_rob_tag_in(data_producer_rob_tag_in),
+		.store_data_producer_rob_tag_in(store_data_producer_rob_tag_in),
 		.agu_address_valid(agu_address_valid),
 		.agu_address_data(agu_address_data),
 		.agu_address_rob_tag(agu_address_rob_tag),
@@ -241,6 +241,7 @@ module test_load_store_unit;
 		// TODO: do the same for a single store
 		alloc_stq_entry = 1;
 		rob_tag_in = 2;
+		store_data_producer_rob_tag_in = 37;
 		# 10
 		assert(stq_valid == 'h0001);
 
@@ -262,7 +263,7 @@ module test_load_store_unit;
 		// now we'll put the data on the CDB
 		cdb_active = 1;
 		cdb_data = 'h89AB_CDEF;
-		cdb_tag = 2;
+		cdb_tag = 37;
 		# 10
 		// the data should now be stored in the store queue
 		// TODO: this is failing because I changed the store queue to read a producer tag
@@ -322,6 +323,7 @@ module test_load_store_unit;
 		// allocate a store queue entry without providing data
 		alloc_stq_entry = 1;
 		rob_tag_in = 3;
+		store_data_producer_rob_tag_in = 19;
 		# 10
 		alloc_stq_entry = 0;
 		rob_tag_in = 0;
@@ -415,7 +417,7 @@ module test_load_store_unit;
 		// index 1 and verify it wakes the sleeping load at ldq index
 		// 1
 		cdb_active = 1;
-		cdb_tag = 3;
+		cdb_tag = 19;
 		cdb_data = 'h5656_7878;
 		# 10
 		cdb_active = 0;

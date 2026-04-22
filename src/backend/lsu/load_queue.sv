@@ -133,7 +133,6 @@ module load_queue #(
 	output logic [LDQ_TAG_WIDTH-1:0] tail,
 
 	output logic full
-	// TODO flush signals
 	);
 
 	// just like the ROB, the tags may be extended, and thus wider than
@@ -206,13 +205,9 @@ module load_queue #(
 						ldq_address_valid[i] <= 1;
 					end
 
-					// if the load is sleeping and the store that caused
-					// it to sleep is seen on the CDB, we can wake the
-					// load so it can be retried
-					// TODO: stores do not broadcast to the CDB.  If we're to
-					// monitor the CDB, it must watch for the store's data
-					// source ROB tag, not the store's ROB tag.
-					// (stq_data_producer_rob_tag)
+					// if the load is sleeping and the data source for the store
+					// that caused it to sleep is seen on the CDB, we can wake
+					// the load so it can be retried
 					if (ldq_valid[i] && ldq_sleeping[i]
 							&& cdb_active && cdb_tag == ldq_sleep_rob_tag[i]) begin
 						ldq_sleeping[i] <= 0;

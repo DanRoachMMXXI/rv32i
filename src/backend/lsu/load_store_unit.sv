@@ -21,9 +21,9 @@ module load_store_unit #(
 	// store_data_valid determines if the data on store_data should
 	// be stored in the STQ 1 = use store_data, 0 = wait for it on CDB
 	input logic			store_data_valid,
-	// data_producer_rob_tag_in: ROB tag of the instruction that will produce the data to be
+	// store_data_producer_rob_tag_in: ROB tag of the instruction that will produce the data to be
 	// written to memory, if store_data_in_valid is NOT set.
-	input logic [ROB_TAG_WIDTH-1:0]			data_producer_rob_tag_in,
+	input logic [ROB_TAG_WIDTH-1:0]			store_data_producer_rob_tag_in,
 
 	input logic			agu_address_valid,
 	input logic [XLEN-1:0]		agu_address_data,
@@ -301,7 +301,7 @@ module load_store_unit #(
 		.rob_tag_in(rob_tag_in),
 		.store_data_in(store_data),
 		.store_data_in_valid(store_data_valid),
-		.data_producer_rob_tag_in(data_producer_rob_tag_in),
+		.store_data_producer_rob_tag_in(store_data_producer_rob_tag_in),
 
 		.agu_address_valid(agu_address_valid),
 		.agu_address_data(agu_address_data),
@@ -355,7 +355,7 @@ module load_store_unit #(
 		.stq_address(stq_address),
 		.stq_address_valid(stq_address_valid),
 		.stq_data_valid(stq_data_valid),
-		.stq_rob_tag(stq_rob_tag),
+		.stq_data_producer_rob_tag(stq_data_producer_rob_tag),
 
 		.stq_head(stq_head),
 

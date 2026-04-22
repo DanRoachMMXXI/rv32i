@@ -17,7 +17,7 @@ module load_store_dep_checker #(parameter XLEN=32, parameter ROB_TAG_WIDTH, para
 	input logic [STQ_SIZE-1:0][XLEN-1:0]		stq_address,
 	input logic [STQ_SIZE-1:0]			stq_address_valid,
 	input logic [STQ_SIZE-1:0]			stq_data_valid,	// is the data for the store present in the entry?
-	input logic [STQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]	stq_rob_tag,	// tell the LDQ which ROB tag it's sleeping on
+	input logic [STQ_SIZE-1:0][ROB_TAG_WIDTH-1:0]	stq_data_producer_rob_tag,	// tell the LDQ which ROB tag it's sleeping on
 
 	// putting these here as I think we are going to need these to
 	// compare the age of different stores by computing how far
@@ -86,7 +86,7 @@ module load_store_dep_checker #(parameter XLEN=32, parameter ROB_TAG_WIDTH, para
 			// otherwise put the load to sleep
 			end else begin
 				sleep = 1;
-				sleep_rob_tag = stq_rob_tag[youngest_matching_store_index];
+				sleep_rob_tag = stq_data_producer_rob_tag[youngest_matching_store_index];
 			end
 		end
 		// else we load from memory, so no sleep or forwarding signals

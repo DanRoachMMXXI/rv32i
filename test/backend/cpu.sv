@@ -625,7 +625,6 @@ module test_ooo_cpu;
 		assert(RS_route[AGU_RS_END_INDEX:AGU_RS_START_INDEX] != 0);
 		assert(IR_q1_valid == 0);	// this value is being forwarded from the CDB
 		assert(IR_v1 == 'h1000);
-		$display("0x18 IR_immediate: 0x%h", IR_immediate);
 		assert(IR_immediate == -20);
 		assert(rob_tail == 6);
 
@@ -847,8 +846,6 @@ module test_ooo_cpu;
 		// assertions for 0x24
 		assert(rob_commit == 0);
 		assert(rob_head == 9);
-
-		// assertions for 0x24 status in ROB
 		assert(rob_ready[9] == 0);
 
 		// assertions for 0x28 broadcasting to address bus
@@ -874,7 +871,29 @@ module test_ooo_cpu;
 		// 0x34 (lw) is being routed to an AGU FU.
 		// 0x38 (mv => addi) is being decoded
 		// 0x3C (lw) is being fetched
+
+		// assertions for 0x24
+		assert(rob_commit == 0);
+		assert(rob_head == 9);
+		assert(rob_ready[9] == 0);
+
+		// assertions for 0x28
+		assert(rob_ready[10] == 0);
+
+		// assertions for 0x2C waiting to execute
+		assert((RS_q1_valid & RS_route_snapshot['h2C]) != 0);
+		assert((RS_q2_valid & RS_route_snapshot['h2C]) != 0);
+		assert((RS_ready_to_execute & RS_route_snapshot['h2C]) == 0);
+
+		// assertions for 0x30 execution
+		assert((RS_ready_to_execute & RS_route_snapshot['h30]) != 0);
+		assert((RS_dispatched & RS_route_snapshot['h30]) != 0);
+		assert((FU_write_to_buffer & RS_route_snapshot['h30]) != 0);
+
+		// assertions for 0x34 routing
 		RS_route_snapshot[IR_pc] = RS_route;
+		assert(RS_route[AGU_RS_END_INDEX:AGU_RS_START_INDEX] != 0);
+
 		assert(IF_instruction == 'h01c12083);
 		# 10
 		// PC = 0x40
@@ -889,7 +908,35 @@ module test_ooo_cpu;
 		// 0x38 (mv => addi) is being routed to an ALU FU.
 		// 0x3C (lw) is being decoded
 		// 0x40 (lw) is being fetched
+
+		// assertions for 0x24
+		assert(rob_commit == 0);
+		assert(rob_head == 9);
+		assert(rob_ready[9] == 0);
+
+		// assertions for 0x28
+		assert(rob_ready[10] == 0);
+
+		// assertions for 0x2C waiting to execute
+		assert((RS_q1_valid & RS_route_snapshot['h2C]) != 0);
+		assert((RS_q2_valid & RS_route_snapshot['h2C]) != 0);
+		assert((RS_ready_to_execute & RS_route_snapshot['h2C]) == 0);
+
+		// assertions for 0x30 broadcasting to address bus
+		assert(address_bus_valid == 1);
+		assert(address_bus_tag == 12);
+		assert(address_bus_data == 'hFE4);
+		assert((~RS_reset & RS_route_snapshot['h30]) != 0);
+
+		// assertions for 0x34 execution
+		assert((RS_ready_to_execute & RS_route_snapshot['h34]) != 0);
+		assert((RS_dispatched & RS_route_snapshot['h34]) != 0);
+		assert((FU_write_to_buffer & RS_route_snapshot['h34]) != 0);
+
+		// assertions for 0x38 routing
 		RS_route_snapshot[IR_pc] = RS_route;
+		assert(RS_route[ALU_RS_END_INDEX:ALU_RS_START_INDEX] != 0);
+
 		assert(IF_instruction == 'h01812403);
 		# 10
 		// PC = 0x44
@@ -906,7 +953,40 @@ module test_ooo_cpu;
 		// 0x3C (lw) is being routed to an AGU FU.
 		// 0x40 (lw) is being decoded
 		// 0x44 (addi) is being fetched
+
+		// assertions for 0x24
+		assert(rob_commit == 0);
+		assert(rob_head == 9);
+		assert(rob_ready[9] == 0);
+
+		// assertions for 0x28
+		assert(rob_ready[10] == 0);
+
+		// assertions for 0x2C waiting to execute
+		assert(rob_ready[11] == 0);
+		assert((RS_q1_valid & RS_route_snapshot['h2C]) != 0);
+		assert((RS_q2_valid & RS_route_snapshot['h2C]) != 0);
+		assert((RS_ready_to_execute & RS_route_snapshot['h2C]) == 0);
+
+		// assertions for 0x30
+		assert(rob_ready[12] == 1);
+
+		// assertions for 0x34
+		assert(address_bus_valid == 1);
+		assert(address_bus_tag == 13);
+		assert(address_bus_data == 'hFE4);
+		assert((~RS_reset & RS_route_snapshot['h34]) != 0);
+
+		// assertions for 0x38 awaiting its register operand
+		assert(rob_ready[14] == 0);
+		assert((RS_q1_valid & RS_route_snapshot['h38]) != 0);
+		assert((RS_q2_valid & RS_route_snapshot['h38]) == 0);
+		assert((RS_ready_to_execute & RS_route_snapshot['h38]) == 0);
+
+		// assertions for 0x3C routing
 		RS_route_snapshot[IR_pc] = RS_route;
+		// TODO
+
 		assert(IF_instruction == 'h02010113);
 		# 10
 		// PC = 0x44

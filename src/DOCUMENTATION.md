@@ -23,8 +23,6 @@
           and route them to the PC.
             - Eventually this will be moved into the Instruction Fetch stage to avoid the one-cycle
               stall incurred by predicting jumps in the decode stage
-            - The design of the Return Address Stack was heavily guided by an LLM.
-              TODO: move ^ to the section covering the RAS itself
     - Instruction and Operand Routing / Register File
         - Instantiate modules for the register file, instruction routing, and operand routing
             - Operand routing uses the tag and `tag_valid` stored in the register file to forward
@@ -36,9 +34,8 @@
       execution pipeline consists of a reservation station, the functional unit, an output buffer,
       and a reset module for the reservation station that monitors the bus the output buffer
       broadcasts to.
-    - The reorder buffer takes in allocation signals from the `instruction_route` module and monitors
+    - The `reorder_buffer` takes in allocation signals from the `instruction_route` module and monitors
       the CDB and AGU busses to indicate when instructions are ready to commit.
-    - Load/Store Unit
-        - TODO
+    - The `load_store_unit` tracks all in-flight load and store instructions and fires them to memory
     - Flushing
         - TODO

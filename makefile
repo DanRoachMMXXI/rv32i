@@ -240,6 +240,9 @@ ooo_cpu ooocpu:
 testooo:
 	$(VERILATOR) --top-module test_ooo_cpu src/frontend/*.sv test/out_of_order/cpu.sv src/backend/*.sv src/backend/*/*.sv src/out_of_order_cpu.sv src/common/*.sv
 
+cache:
+	$(VERILATOR) --top-module test_cache test/cache/level_one_cache.sv src/common/fixed_priority_arbiter.sv src/common/lsb_priority_encoder.sv src/cache/*.sv
+
 clean:
 	rm -rf work transcript *.log *.wlf
 	rm -rf obj_dir

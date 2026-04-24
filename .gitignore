@@ -6,3 +6,5 @@ transcript
 *.ys
 
 .Xil/
+*.bit
+*vivado*
